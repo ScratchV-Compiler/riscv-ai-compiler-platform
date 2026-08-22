@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>评测结果</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container py-5">
+        <h2>📊 评测详情</h2>
+        <div id="resultContent">
+            <div class="spinner-border text-primary" role="status"></div> 等待评测...
+        </div>
+        <a href="/" class="btn btn-outline-primary mt-3">← 返回首页</a>
+    </div>
+
+    <script>
+        const subId = window.location.pathname.split('/').pop();
+        async function pollResult() {
+            const resp = await fetch(`/api/result/${subId}`);
+            if (!resp.ok) {
+                document.getElementById('resultContent').innerHTML = '<div class="alert alert-danger">结果不存在</div>';
+                return;
+            }
+            const data = await resp.json();
+            const container = document.getElementById('resultContent');
+
+            if (data.status === 'pending' || data.status === 'running') {
+                container.innerHTML = `<div class="spinner-border text-primary" role="status"></div> 评测中... (${data.status})`;
+                setTimeout(pollResult, 2000);  // 2秒后重试
+            } else if (data.status === 'success') {
+                // 解析 details JSON
+                let detailsHtml = '';
+                try {
+                    const details = JSON.parse(data.details || '{}');
+                    if (details.cases) {
+                        detailsHtml = '<table class="table table-bordered"><thead><tr><th>用例</th><th>周期数</th><th>指令数</th><th>得分</th></tr></thead><tbody>';
+                        details.cases.forEach(c => {
+                            detailsHtml += `<tr><td>#${c.case}</td><td>${c.cycles || 0}</td><td>${c.instructions || 0}</td><td>${(c.score || 0).toFixed(3)}</td></tr>`;
+                        });
+                        detailsHtml += '</tbody></table>';
+                        detailsHtml += `<p><strong>总分：</strong> ${details.total_score.toFixed(2)}</p>`;
+                    } else if (details.error) {
+                        detailsHtml = `<div class="alert alert-danger">评测失败：${details.error}</div>`;
+                    }
+                } catch (e) {
+                    detailsHtml = `<pre>${data.details || '无详细数据'}</pre>`;
+                }
+                container.innerHTML = `<div class="alert alert-success">✅ 评测完成！</div> ${detailsHtml}`;
+            } else {
+                container.innerHTML = `<div class="alert alert-danger">❌ 评测失败 (status: ${data.status})</div>`;
+            }
+        }
+
+        pollResult();
+    </script>
+</body>
+</html>
