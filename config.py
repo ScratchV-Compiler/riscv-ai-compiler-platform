@@ -15,3 +15,7 @@ class Config:
     UPLOAD_FOLDER = SUBMISSIONS_DIR
     # 评测超时（秒）
     EVAL_TIMEOUT = 120
+
+
+# 模块级常量，供 evaluator.py 等直接 from config import EVAL_TIMEOUT
+EVAL_TIMEOUT = Config.EVAL_TIMEOUT

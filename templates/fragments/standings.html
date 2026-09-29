@@ -1,0 +1,45 @@
+{# 排行榜表体片段：由 /frag/standings 返回，也用于整页首屏服务端渲染 #}
+{% if standings.rows %}
+<div class="table-scroll">
+  <table class="table table-standings">
+    <caption class="visually-hidden">
+      榜单{% if standings.single %}（仅统计 {{ standings.single }}）{% endif %}：
+      排名、队伍、{{ standings.total_label }}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col" aria-label="排名">#</th>
+        <th scope="col">队伍</th>
+        <th scope="col" class="text-end">{{ standings.total_label }}</th>
+        {% for pid in standings.columns %}
+        <th scope="col" class="text-end">{{ pid }}</th>
+        {% endfor %}
+        <th scope="col" class="text-end">提交</th>
+        <th scope="col">最后提交</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in standings.rows %}
+      <tr>
+        <td class="rank{% if row.rank <= 3 %} top{% endif %}">{{ row.rank }}</td>
+        <td class="team">{{ row.team }}</td>
+        <td class="n total">{{ '%.2f'|format(row.total) }}</td>
+        {% for pid in standings.columns %}
+        <td class="n{% if row.scores[pid] == 0 %} score-0{% endif %}">{{ '%.2f'|format(row.scores[pid]) }}</td>
+        {% endfor %}
+        <td class="n">{{ row.count }}</td>
+        <td class="n text-body-secondary">{{ row.last_str }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">
+  <p>
+    {{ standings.problem|upper if standings.single else '当前' }}暂无有效提交。
+    等第一份通过正确性校验的提交产生后，这里会实时出现名次。
+  </p>
+  <a class="btn btn-quiet btn-sm" href="{{ url_for('problems_page') }}">先看赛题与数据规模</a>
+</div>
+{% endif %}

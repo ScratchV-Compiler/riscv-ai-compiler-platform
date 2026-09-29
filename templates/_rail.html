@@ -1,0 +1,45 @@
+{# 默认右侧栏：结算与配额 / 评分口径 / 赛程 #}
+<div class="panel">
+  <div class="panel-head"><h2>结算与配额</h2></div>
+  <div class="panel-body">
+    <ul class="kv">
+      <li><span class="k">最近结算</span><span class="v">每日 05:00（UTC+8）</span></li>
+      <li><span class="k">距下次结算</span><span class="v mono" data-countdown aria-live="off">--</span></li>
+      <li><span class="k">每队每日提交</span><span class="v">99 次</span></li>
+      <li><span class="k">排名取值</span><span class="v">当日最优</span></li>
+    </ul>
+    <p class="text-body-secondary small mb-0 mt-2">
+      榜单实时刷新，名次在每日 05:00 结算；结算同时重置提交配额。
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>评分口径</h2></div>
+  <div class="panel-body">
+    <ul class="kv">
+      <li><span class="k">正确性</span><span class="v">一票否决</span></li>
+      <li><span class="k">单题得分</span><span class="v">100 × 基准 ÷ 本队</span></li>
+      <li><span class="k">总分</span><span class="v">各题之和 · 满分 300</span></li>
+      <li><span class="k">超时判定</span><span class="v">＞ 10 × 基线</span></li>
+    </ul>
+    <p class="text-body-secondary small mb-0 mt-2">
+      基准取全场该题最快有效成绩，单题上限 100 分。详见
+      <a href="{{ url_for('help_page') }}">帮助</a>。
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>赛程</h2></div>
+  <div class="panel-body">
+    <ul class="kv">
+      <li><span class="k">Stage 1</span><span class="v">线上 · 约 4 周</span></li>
+      <li><span class="k">Stage 2</span><span class="v">线下 · 3 小时</span></li>
+      <li><span class="k">晋级条件</span><span class="v">完成 Stage 1</span></li>
+    </ul>
+    <p class="text-body-secondary small mb-0 mt-2">
+      完成 Stage 1 且有有效提交即可晋级；Stage 1 成绩不带入决赛。
+    </p>
+  </div>
+</div>

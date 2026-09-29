@@ -1,0 +1,29 @@
+{# 单题完整规格块；调用方需提供 p，可选 show_title（默认 true）#}
+<section class="panel prob-block" id="{{ p.id }}"{% if show_title is not defined or show_title %} aria-labelledby="prob-{{ p.id }}"{% endif %}>
+  {% if show_title is not defined or show_title %}
+  <div class="panel-head">
+    <h2 id="prob-{{ p.id }}">
+      <span class="mono text-body-secondary me-2">{{ '%02d'|format(p.no) }}</span>{{ p.title }}
+    </h2>
+    <span class="badge-id">{{ p.id }}</span>
+  </div>
+  {% endif %}
+  <div class="panel-body">
+    <p>{{ p.task }}</p>
+
+    <dl class="spec">
+      <dt>输入</dt>
+      <dd>{{ p.input }}</dd>
+      <dt>输出与校验</dt>
+      <dd>{{ p.output }}</dd>
+      <dt>数据规模</dt>
+      <dd>{{ p.scale }}</dd>
+      <dt>baseline</dt>
+      <dd>{{ p.baseline }}</dd>
+      <dt>优化提示</dt>
+      <dd>{{ p.hint }}</dd>
+    </dl>
+
+    <pre class="formula" aria-label="核心公式"><code>{{ p.formula }}</code></pre>
+  </div>
+</section>

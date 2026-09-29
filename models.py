@@ -21,5 +21,7 @@ class Submission(db.Model):
             'problem': self.problem_id,
             'status': self.status,
             'score': self.score,
+            'details': self.details,
             'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

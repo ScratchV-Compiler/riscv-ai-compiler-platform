@@ -1,135 +1,56 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RISC-V AI 编译器比赛 · 在线评测</title>
-    <!-- Bootstrap 5 (CDN) -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container py-5">
-        <h1 class="text-center mb-4">🧩 RISC-V AI 编译器挑战赛</h1>
-        <p class="text-center text-muted">提交你的编译器优化代码，实时刷新排行榜</p>
+{% extends 'base.html' %}
+{% block title %}RISC-V AI 编译器挑战赛 · 评测平台{% endblock %}
 
-        <div class="row mt-5">
-            <!-- 左侧：提交表单 -->
-            <div class="col-md-6">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-primary text-white">
-                        提交新版本
-                    </div>
-                    <div class="card-body">
-                        <form id="submitForm">
-                            <div class="mb-3">
-                                <label for="team" class="form-label">队伍名称</label>
-                                <input type="text" class="form-control" id="team" placeholder="例如：RISC-V 先锋队" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="problem" class="form-label">选择赛题</label>
-                                <select class="form-select" id="problem" required>
-                                    <option value="fwht">赛题一：哈达玛变换 (FWHT)</option>
-                                    <option value="conv">赛题二：Winograd 卷积</option>
-                                    <option value="spmv">赛题三：稀疏矩阵乘 (SpMV)</option>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label for="codeFile" class="form-label">上传代码（Python 文件）</label>
-                                <input class="form-control" type="file" id="codeFile" accept=".py" required>
-                            </div>
-                            <button type="submit" class="btn btn-success w-100" id="submitBtn">
-                                ⚡ 提交评测
-                            </button>
-                        </form>
-                        <div id="submitStatus" class="mt-3"></div>
-                    </div>
-                </div>
-            </div>
+{% block content %}
+<section class="hero">
+  <span class="chip"><span class="dot" aria-hidden="true"></span>Stage 1 线上赛 · 进行中</span>
+  <h1>RISC-V AI 编译器挑战赛</h1>
+  <p class="lede">
+    提交你优化过的代码生成模块，平台自动编译、仿真，按动态指令与周期计分。
+    三道赛题：<span class="mono">fwht</span> / <span class="mono">conv</span> / <span class="mono">spmv</span>。
+  </p>
+  <div class="hero-cta">
+    <a class="btn btn-brand" href="{{ url_for('standings_page') }}">查看排行榜</a>
+    <a class="btn btn-quiet" href="{{ url_for('problems_page') }}">阅读赛题</a>
+  </div>
+</section>
 
-            <!-- 右侧：排行榜 -->
-            <div class="col-md-6">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-secondary text-white">
-                        🏆 当前排行榜（自动刷新）
-                    </div>
-                    <div class="card-body" id="leaderboardContainer">
-                        <p class="text-muted">选择赛题后点击 “刷新”</p>
-                        <table class="table table-sm table-striped" id="leaderboardTable">
-                            <thead><tr><th>#</th><th>队伍</th><th>得分</th><th>时间</th></tr></thead>
-                            <tbody id="leaderboardBody"></tbody>
-                        </table>
-                        <button class="btn btn-outline-secondary btn-sm" id="refreshLb">🔄 刷新</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<section class="panel mt-4" aria-labelledby="probHeading">
+  <div class="panel-head">
+    <h2 id="probHeading">三道赛题</h2>
+    <a class="small" href="{{ url_for('problems_page') }}">全部题目与数据规模</a>
+  </div>
+  <ul class="prob-list">
+    {% for p in problems %}
+    <li>
+      <a class="prob-row" href="{{ url_for('problem_page', problem_id=p.id) }}">
+        <span class="prob-no mono">{{ '%02d'|format(p.no) }}</span>
+        <span class="prob-main">
+          <span class="prob-title d-block">{{ p.title }}</span>
+          <span class="prob-sum d-block">{{ p.summary }}</span>
+        </span>
+        <span class="prob-side">
+          <span class="badge-id">{{ p.id }}</span>
+          <span class="text-body-secondary small">满分 100</span>
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
 
-    <script>
-        // ---------- 提交 ----------
-        const form = document.getElementById('submitForm');
-        const statusDiv = document.getElementById('submitStatus');
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const team = document.getElementById('team').value.trim();
-            const problem = document.getElementById('problem').value;
-            const fileInput = document.getElementById('codeFile');
-            if (!team || !fileInput.files.length) {
-                statusDiv.innerHTML = '<div class="alert alert-warning">请完整填写信息并选择文件</div>';
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('team', team);
-            formData.append('problem', problem);
-            formData.append('code', fileInput.files[0]);
-
-            statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div> 提交中...';
-            document.getElementById('submitBtn').disabled = true;
-
-            try {
-                const resp = await fetch('/api/submit', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (resp.ok) {
-                    const subId = data.submission_id;
-                    statusDiv.innerHTML = `<div class="alert alert-success">✅ 提交成功！评测 ID: ${subId}。 <a href="/result/${subId}">查看结果</a></div>`;
-                    // 自动跳转到结果页面
-                    window.location.href = `/result/${subId}`;
-                } else {
-                    statusDiv.innerHTML = `<div class="alert alert-danger">❌ 提交失败: ${data.error || '未知错误'}</div>`;
-                }
-            } catch (err) {
-                statusDiv.innerHTML = `<div class="alert alert-danger">网络错误，请重试</div>`;
-            }
-            document.getElementById('submitBtn').disabled = false;
-        });
-
-        // ---------- 排行榜 ----------
-        async function loadLeaderboard(problem = 'fwht') {
-            const resp = await fetch(`/api/leaderboard/${problem}`);
-            if (!resp.ok) return;
-            const data = await resp.json();
-            const tbody = document.getElementById('leaderboardBody');
-            tbody.innerHTML = '';
-            data.slice(0, 10).forEach((item, idx) => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${idx+1}</td><td>${item.team}</td><td>${item.score.toFixed(2)}</td><td>${new Date(item.created_at).toLocaleString()}</td>`;
-                tbody.appendChild(tr);
-            });
-        }
-
-        // 默认加载 fwht
-        document.getElementById('problem').addEventListener('change', (e) => {
-            loadLeaderboard(e.target.value);
-        });
-        document.getElementById('refreshLb').addEventListener('click', () => {
-            const p = document.getElementById('problem').value;
-            loadLeaderboard(p);
-        });
-        // 初始加载
-        loadLeaderboard('fwht');
-    </script>
-</body>
-</html>
+<section class="panel" aria-labelledby="lbHeading">
+  <div class="panel-head">
+    <h2 id="lbHeading">排行榜速览</h2>
+    <a class="small" href="{{ url_for('standings_page') }}">完整榜单</a>
+  </div>
+  <div id="standings"
+       hx-get="{{ url_for('frag_standings', problem='all', stage=1, limit=5) }}"
+       hx-trigger="every 15s"
+       hx-swap="innerHTML">
+    {% set standings = standings_preview %}
+    {% include 'fragments/standings.html' %}
+  </div>
+  <div class="panel-foot">榜单实时刷新；名次以每日 05:00（UTC+8）结算为准。</div>
+</section>
+{% endblock %}

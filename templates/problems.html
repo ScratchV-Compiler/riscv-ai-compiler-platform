@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}赛题 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>赛题</h1>
+  <p class="lede">
+    三道题分别考察蝶形变换、Winograd 卷积与 CSR 稀疏矩阵乘的代码生成。
+    每道题满分 100，正确性一票否决，性能按相对基准计分。
+  </p>
+</div>
+
+{% for p in problems %}
+  {% include '_problem_block.html' %}
+{% endfor %}
+
+<section class="panel" aria-labelledby="ruleHeading">
+  <div class="panel-head"><h2 id="ruleHeading">评分规则</h2></div>
+  <div class="panel-body">
+    <dl class="spec">
+      <dt>正确性（一票否决）</dt>
+      <dd>每个数据点与官方参考实现比对，Q16.16 绝对误差须 ≤ 1 LSB。误差超阈值该点得 0 分；某题全部数据点失败，该题总分为 0，成绩无效。</dd>
+      <dt>性能得分</dt>
+      <dd>单题得分 = 100 × min(1, 基准时间 ÷ 本队时间)。基准时间取全场该题最快有效成绩，因此单题满分 100。</dd>
+      <dt>超时判定</dt>
+      <dd>本队时间超过基线 10 倍时直接判定正确性失败，该数据点得 0 分。</dd>
+      <dt>总分</dt>
+      <dd>总分 = 各题得分之和（3 题，满分 300）。同一队伍同一天内同一题取当日最高分。</dd>
+      <dt>评测环境</dt>
+      <dd>ScratchV standalone，固定 uarch profile 与指令上限，以动态指令数与总周期为准。</dd>
+      <dt>禁止项</dt>
+      <dd><code>--estimate</code>（内置硬编码指令表）与 TinyFive 计分路径均不可用于成绩；须走实测 benchmark。</dd>
+    </dl>
+  </div>
+</section>
+{% endblock %}

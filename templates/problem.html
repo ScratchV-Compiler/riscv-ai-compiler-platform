@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}{{ p.title }} · 赛题{% endblock %}
+
+{% block content %}
+<nav aria-label="面包屑" class="mb-2">
+  <span class="small text-body-secondary">
+    <a href="{{ url_for('problems_page') }}">赛题</a>
+    <span aria-hidden="true"> / </span>
+    <span class="mono">{{ p.id }}</span>
+  </span>
+</nav>
+
+<div class="page-head">
+  <h1>{{ p.title }}</h1>
+  <p class="lede">{{ p.summary }}</p>
+</div>
+
+{% set show_title = false %}
+{% include '_problem_block.html' %}
+
+<nav class="d-flex justify-content-between gap-2 mt-3" aria-label="相邻赛题">
+  {% if prev_p %}
+  <a class="btn btn-quiet btn-sm" href="{{ url_for('problem_page', problem_id=prev_p.id) }}">
+    上一题 · <span class="mono">{{ prev_p.id }}</span>
+  </a>
+  {% else %}<span></span>{% endif %}
+  {% if next_p %}
+  <a class="btn btn-quiet btn-sm" href="{{ url_for('problem_page', problem_id=next_p.id) }}">
+    下一题 · <span class="mono">{{ next_p.id }}</span>
+  </a>
+  {% else %}<span></span>{% endif %}
+</nav>
+{% endblock %}

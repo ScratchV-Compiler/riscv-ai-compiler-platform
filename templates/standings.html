@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}排行榜 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>排行榜</h1>
+  <p class="lede">
+    实时展示当日最优成绩，每日 05:00（UTC+8）结算名次并重置提交配额。
+    单题得分为百分制相对分，正确性未通过不计入。
+  </p>
+</div>
+
+<section class="panel" aria-labelledby="lbHeading">
+  <div class="panel-head">
+    <h2 id="lbHeading">Stage 1 榜单</h2>
+    <span class="text-body-secondary small">每 15 秒自动刷新</span>
+  </div>
+
+  <div class="filterbar">
+    <span class="filter-group">
+      <span class="filter-label">赛题</span>
+      <span class="seg" role="group" aria-label="按赛题筛选">
+        <a href="{{ url_for('standings_page', problem='all', stage=stage) }}"
+           {% if problem == 'all' %}aria-current="true"{% endif %}>全部</a>
+        {% for p in problems %}
+        <a href="{{ url_for('standings_page', problem=p.id, stage=stage) }}"
+           {% if problem == p.id %}aria-current="true"{% endif %}>{{ p.id }}</a>
+        {% endfor %}
+      </span>
+    </span>
+    <span class="filter-group">
+      <span class="filter-label">阶段</span>
+      <span class="seg" role="group" aria-label="按阶段筛选">
+        <a href="{{ url_for('standings_page', problem=problem, stage=1) }}"
+           {% if stage == 1 %}aria-current="true"{% endif %}>Stage 1</a>
+        <a href="#" aria-disabled="true" onclick="return false" title="Stage 2 现场赛，本版暂不开放">Stage 2</a>
+      </span>
+    </span>
+  </div>
+
+  <div id="standings"
+       hx-get="{{ url_for('frag_standings', problem=problem, stage=stage) }}"
+       hx-trigger="every 15s"
+       hx-swap="innerHTML">
+    {% include 'fragments/standings.html' %}
+  </div>
+
+  <div class="panel-foot">
+    统计区间：{{ standings.since_str }} 起 · 数据更新可能滞后数秒
+  </div>
+</section>
+{% endblock %}

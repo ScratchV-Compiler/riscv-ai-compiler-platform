@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 平台运行时产物
+platform.db
+submissions/
+test_data/
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
