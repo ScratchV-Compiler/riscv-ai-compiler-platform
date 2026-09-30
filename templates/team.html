@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}我的队伍 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>我的队伍</h1>
+  <p class="lede">管理队伍成员、邀请码与今日提交配额。</p>
+</div>
+
+{% if not team %}
+<section class="panel">
+  <div class="panel-body empty">
+    <p>你还没有加入任何队伍。创建一支新队伍，或用队长给的邀请码入队（每队 1~3 人）。</p>
+    <a class="btn btn-brand btn-sm" href="{{ url_for('auth.team_join_page') }}">去建队 / 入队</a>
+  </div>
+</section>
+{% else %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ team.name }}</h2>
+    <span class="badge-id">{{ team.member_count }} / 3 人</span>
+  </div>
+  <div class="panel-body">
+    <dl class="spec">
+      <dt>邀请码</dt>
+      <dd>
+        <span class="mono invite-code">{{ team.invite_code }}</span>
+        {% if user.id == team.captain_id %}
+        <form method="post" action="{{ url_for('auth.team_reset_code_page') }}" class="d-inline ms-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-quiet btn-sm" type="submit"
+                  onclick="return confirm('重置后旧邀请码立即失效，确定继续？')">重置</button>
+        </form>
+        {% endif %}
+      </dd>
+      <dt>成员</dt>
+      <dd>
+        <ul class="member-list">
+          {% for m in members %}
+          <li>
+            <span class="member-name">{{ m.name }}</span>
+            <span class="member-mail mono">{{ m.email }}</span>
+            {% if m.id == team.captain_id %}<span class="tag">队长</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </dd>
+    </dl>
+
+    {% if user.id == team.captain_id and team.member_count > 1 %}
+    <form method="post" action="{{ url_for('auth.team_transfer_page') }}" class="d-flex flex-wrap align-items-end gap-2 mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="form-label mb-1" for="to_user_id">转让队长给</label>
+        <select class="form-select form-select-sm" id="to_user_id" name="to_user_id" required>
+          {% for m in members if m.id != user.id %}
+          <option value="{{ m.id }}">{{ m.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-quiet btn-sm" type="submit">转让队长</button>
+    </form>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('auth.team_leave_page') }}" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-quiet btn-sm" type="submit"
+              onclick="return confirm('确定退出队伍？退队后可用邀请码加入其他队伍。')">退出队伍</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>今日配额</h2></div>
+  <div class="panel-body">
+    {% set pct = (quota.used / quota.limit * 100) if quota.limit else 0 %}
+    <div class="d-flex justify-content-between">
+      <span>今日已提交 <span class="mono">{{ quota.used }}</span> / {{ quota.limit }}</span>
+      <span class="text-body-secondary small">每日 05:00（UTC+8）重置</span>
+    </div>
+    <div class="quota-bar {% if quota.used >= quota.limit %}is-out{% elif pct >= 80 %}is-low{% endif %}"
+         role="img" aria-label="今日配额已用 {{ quota.used }} / {{ quota.limit }}">
+      <span style="width: {{ 100 if pct > 100 else pct }}%"></span>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>我的提交</h2>
+    <span class="text-body-secondary small">最近 20 条</span>
+  </div>
+  {% if submissions %}
+  <div class="table-scroll">
+    <table class="table table-standings">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">题目</th>
+          <th scope="col">状态</th>
+          <th scope="col" class="text-end">得分</th>
+          <th scope="col">提交时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in submissions %}
+        <tr>
+          <td class="mono">#{{ s.id }}</td>
+          <td>{{ s.problem_id }}</td>
+          <td>{{ s.status }}</td>
+          <td class="n">{{ '%.2f'|format(s.score or 0) }}</td>
+          <td class="n text-body-secondary">{{ s.created_at.strftime('%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="panel-body empty">
+    <p>还没有提交记录。提交入口在下一阶段上线，当前可以先浏览赛题、准备代码。</p>
+    <a class="btn btn-quiet btn-sm" href="{{ url_for('problems_page') }}">先看赛题</a>
+  </div>
+  {% endif %}
+</section>
+
+{% endif %}
+{% endblock %}

@@ -9,17 +9,30 @@ from models import db, Submission
 from tasks import add_task, start_worker
 from problems import PROBLEMS, get_problem, problem_ids
 from standings import build_standings
+from auth import bp as auth_bp, csrf, current_user
+from seed import seed_demo_submissions
 
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
+csrf.init_app(app)
+app.register_blueprint(auth_bp)
 
-# 创建数据库表
+# 创建数据库表，并在表为空时导入 demo 数据（方案 B）
 with app.app_context():
     db.create_all()
+    _seeded = seed_demo_submissions()
+    if _seeded:
+        print(f'[seed] 已从 data/demo_submissions.csv 导入 {_seeded} 条演示提交')
 
 # 启动后台 worker
 start_worker(app)
+
+
+@app.context_processor
+def inject_current_user():
+    """模板全局：current_user（未登录为 None）。"""
+    return {'current_user': current_user()}
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +109,13 @@ def api_problems():
 
 
 @app.route('/api/submit', methods=['POST'])
+@csrf.exempt  # 旧接口，P3 接入提交页后再补 CSRF token（见 docs/05 D9）
 def submit():
-    team_name = request.form.get('team')
+    # D9：登录态优先取所属队伍名，未登录/未入队时回退表单 team 字段
+    user = current_user()
+    team_name = user.team.name if (user and user.team) else None
+    if not team_name:
+        team_name = request.form.get('team')
     problem_id = request.form.get('problem')
     file = request.files.get('code')
 

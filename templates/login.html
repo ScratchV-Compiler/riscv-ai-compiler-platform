@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}登录 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>登录</h1>
+  <p class="lede">用注册邮箱登录，管理你的队伍与提交。</p>
+</div>
+
+<section class="panel auth-panel">
+  <div class="panel-head"><h2>账号登录</h2></div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('auth.login_page') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+
+      <div class="mb-3">
+        <label class="form-label" for="email">邮箱</label>
+        <input class="form-control" type="email" id="email" name="email" required
+               autocomplete="username" inputmode="email"
+               value="{{ form.email if form else '' }}">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="password">密码</label>
+        <input class="form-control" type="password" id="password" name="password"
+               required autocomplete="current-password">
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-brand" type="submit">登录</button>
+        <span class="small">还没有账号？<a href="{{ url_for('auth.register_page') }}">去注册</a></span>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

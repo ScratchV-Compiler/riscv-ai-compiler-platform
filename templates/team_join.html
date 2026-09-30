@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}建队 / 入队 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>建队 / 入队</h1>
+  <p class="lede">{{ user.name }}，你还没有加入队伍。创建一个新队伍，或用队长给你的邀请码加入。</p>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-md-6">
+    <section class="panel h-100">
+      <div class="panel-head"><h2>创建队伍</h2></div>
+      <div class="panel-body">
+        <p class="text-body-secondary">创建后你将自动成为队长，并获得一个邀请码，邀请 1~2 名队友加入。</p>
+        <form method="post" action="{{ url_for('auth.team_create_page') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label" for="team-name">队伍名称</label>
+            <input class="form-control" type="text" id="team-name" name="name"
+                   required maxlength="60" placeholder="例如：编译先锋队">
+          </div>
+          <button class="btn btn-brand" type="submit">创建队伍</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <section class="panel h-100">
+      <div class="panel-head"><h2>凭邀请码入队</h2></div>
+      <div class="panel-body">
+        <p class="text-body-secondary">向队长索取 8 位邀请码（不区分大小写）。</p>
+        <form method="post" action="{{ url_for('auth.team_join_submit') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label" for="invite-code">邀请码</label>
+            <input class="form-control mono" type="text" id="invite-code" name="invite_code"
+                   required maxlength="12" placeholder="例如：K7M2QP4X"
+                   autocapitalize="characters" autocomplete="off">
+          </div>
+          <button class="btn btn-quiet" type="submit">加入队伍</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -82,6 +82,13 @@
     setInterval(tick, 30000);
   }
 
+  /* ---------- htmx：所有请求带上 CSRF token（Flask-WTF） ---------- */
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+  document.body.addEventListener("htmx:configRequest", function (evt) {
+    if (csrfToken) evt.detail.headers["X-CSRFToken"] = csrfToken;
+  });
+
   /* ---------- htmx：请求失败时给出可操作提示，不静默 ---------- */
   document.body.addEventListener("htmx:responseError", function (evt) {
     var target = evt.detail.target;
