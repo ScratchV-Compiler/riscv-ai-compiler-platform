@@ -24,7 +24,7 @@
            {% if problem == 'all' %}aria-current="true"{% endif %}>全部</a>
         {% for p in problems %}
         <a href="{{ url_for('standings_page', problem=p.id, stage=stage) }}"
-           {% if problem == p.id %}aria-current="true"{% endif %}>{{ p.id }}</a>
+           {% if problem == p.id %}aria-current="true"{% endif %}>{{ p.title }}</a>
         {% endfor %}
       </span>
     </span>

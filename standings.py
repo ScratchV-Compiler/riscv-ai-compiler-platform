@@ -16,7 +16,7 @@
 from datetime import datetime, timedelta, timezone
 
 from models import Submission
-from problems import problem_ids
+from problems import problem_ids, get_problem
 from riscv_problems import get_eval_spec, case_label
 from scoring import (parse_details, field_best, score_details,
                      per_case_points, per_case_costs)
@@ -139,8 +139,15 @@ def build_standings(problem="all", stage=1):
         if vals:
             best_by_size[n] = min(vals)
 
+    # 列头显示标题而不是 id —— id 形如 matmul-4x4，会与「定点矩阵乘」的题名对不上
+    column_labels = {}
+    for pid in display_cols:
+        _p = get_problem(pid)
+        column_labels[pid] = _p["title"] if _p else pid
+
     return {
         "columns": display_cols,
+        "column_labels": column_labels,
         "size_columns": size_cols,
         "best_by_size": best_by_size,
         "best_by_problem": best_by_problem,

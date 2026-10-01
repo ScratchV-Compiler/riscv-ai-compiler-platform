@@ -18,7 +18,7 @@
         {% endfor %}
         {% endif %}
         {% for pid in standings.columns %}
-        <th scope="col" class="text-end">{{ pid }}</th>
+        <th scope="col" class="text-end">{{ standings.column_labels.get(pid, pid) }}</th>
         {% endfor %}
         <th scope="col" class="text-end">提交</th>
         <th scope="col">最后提交</th>
@@ -42,7 +42,7 @@
         {% set sc = row.scores[pid] %}
         {% set is_best = sc > 0 and sc == standings.best_by_problem.get(pid) %}
         <td class="n{% if is_best %} cell-best{% endif %}{% if sc == 0 %} score-0{% endif %}"
-            {% if is_best %}title="{{ pid }} 榜首（{{ '%.2f'|format(sc) }} 分）"{% endif %}>{{ '%.2f'|format(sc) }}</td>
+            {% if is_best %}title="{{ standings.column_labels.get(pid, pid) }} 榜首（{{ '%.2f'|format(sc) }} 分）"{% endif %}>{{ '%.2f'|format(sc) }}</td>
         {% endfor %}
         <td class="n">{{ row.count }}</td>
         <td class="n text-body-secondary">{{ row.last_str }}</td>

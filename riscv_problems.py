@@ -72,7 +72,7 @@ EVAL_SPECS = {
         'full_score': 3 * CASE_COUNT,
         'reference': 'reference/matmul.c',
         'baseline_file': DATA_DIR_BASELINE,
-        'title': 'N×N 定点矩阵乘',
+        'title': '定点矩阵乘',
         'note': '输入 2N² 个 int32（A 与 B，均行主序），输出 N² 个；'
                 'C[i][j] = Σₖ ((A[i][k]×B[k][j]) >> 16)',
     },
