@@ -5,9 +5,9 @@
 刻意与 evaluator.py / tasks.py 解耦：这里只做"把库里已有成绩聚合成榜单"，
 不参与编译、仿真与计分口径实现。
 口径（docs/01-前端设计方案.md 5.3）：
-- 单题得分 = 100 ×（全场该题最优时间 ÷ 本队该题时间），本处以库中已有 score 为准
+- 单题得分 = 100 ×（baseline 指令数 ÷ 本队指令数），本处以库中已有 score 为准
 - 当日最优：同一队同一题取当日内最大值
-- 总分 = 各题得分之和（3 题，满分 300）
+- 总分 = 各题得分之和（当前 1 题，满分 100）
 - 每日 05:00（UTC+8）为结算点与配额重置点；榜单实时展示
 """
 from datetime import datetime, timedelta, timezone
@@ -39,7 +39,7 @@ def last_reset_utc(now=None):
 def build_standings(problem="all", stage=1):
     """
     返回 {columns, rows, total_label, since}。
-    problem = "all" → 按三题总分排名，三列全出；
+    problem = "all" → 按各题总分排名，逐题列出；
     problem = 题目 id → 只按该题排名，只出该列。
     """
     ids = problem_ids()

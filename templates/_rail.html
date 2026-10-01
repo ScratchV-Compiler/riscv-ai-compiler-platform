@@ -19,12 +19,12 @@
   <div class="panel-body">
     <ul class="kv">
       <li><span class="k">正确性</span><span class="v">一票否决</span></li>
-      <li><span class="k">单题得分</span><span class="v">100 × 基准 ÷ 本队</span></li>
-      <li><span class="k">总分</span><span class="v">各题之和 · 满分 300</span></li>
-      <li><span class="k">超时判定</span><span class="v">＞ 10 × 基线</span></li>
+      <li><span class="k">性能得分</span><span class="v">100 × 基准 ÷ 本队</span></li>
+      <li><span class="k">满分</span><span class="v">100 分</span></li>
+      <li><span class="k">计分口径</span><span class="v">动态指令数</span></li>
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
-      基准取全场该题最快有效成绩，单题上限 100 分。详见
+      基准为官方参考解的指令数，取最差用例的比值。详见
       <a href="{{ url_for('help_page') }}">帮助</a>。
     </p>
   </div>

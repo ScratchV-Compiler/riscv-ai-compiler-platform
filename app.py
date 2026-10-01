@@ -129,10 +129,11 @@ def _team_quota_used(team_name):
     ).count()
 
 
-def _create_submission(user, problem_id, file_storage):
+def _create_submission(user, problem_id, file_storage, source_text=None):
     """校验并落库一次提交。返回 (submission, error_message)。
 
     按 D9 收紧：必须登录且已入队，队伍名只从登录态取，不再接受表单传入。
+    源码有两种来源：上传的文件，或直接粘贴的文本；同时提供时以文件为准。
     """
     problem = get_problem(problem_id)
     if problem is None:
@@ -142,17 +143,24 @@ def _create_submission(user, problem_id, file_storage):
         return None, '该题暂未开放提交评测'
     if user.team is None:
         return None, '请先创建或加入一支队伍'
-    if file_storage is None or not (file_storage.filename or '').strip():
-        return None, '请选择要提交的源码文件'
 
     suffix = spec['file_suffix']
-    if not file_storage.filename.lower().endswith(suffix):
-        return None, f'文件类型不符，本赛题请提交 {suffix} 文件'
+    uploaded = file_storage is not None and (file_storage.filename or '').strip()
+    if uploaded:
+        # 后缀校验只对上传文件有意义；粘贴的内容没有文件名
+        if not file_storage.filename.lower().endswith(suffix):
+            return None, f'文件类型不符，本赛题请提交 {suffix} 文件'
+        data = file_storage.read()
+        origin = file_storage.filename
+    elif (source_text or '').strip():
+        data = source_text.encode('utf-8')
+        origin = '（粘贴的代码）'
+    else:
+        return None, '请上传源码文件，或直接粘贴代码'
 
-    data = file_storage.read()
     max_bytes = app.config['SUBMISSION_MAX_BYTES']
-    if not data:
-        return None, '提交的文件是空的'
+    if not data.strip():
+        return None, '提交的源码是空的'
     if len(data) > max_bytes:
         return None, f'源码过大（{len(data)} 字节，上限 {max_bytes} 字节）'
 
@@ -203,7 +211,8 @@ def submit_page():
                    'limit': app.config['DAILY_QUOTA']},
         )
 
-    submission, err = _create_submission(user, problem['id'], request.files.get('code'))
+    submission, err = _create_submission(
+        user, problem['id'], request.files.get('code'), request.form.get('source'))
     if err:
         flash(err, 'error')
         return redirect(url_for('submit_page', problem=problem['id']))
@@ -217,8 +226,10 @@ def submit():
     user = current_user()
     if user is None:
         return jsonify({'error': '请先登录'}), 401
-    problem_id = request.form.get('problem') or (request.get_json(silent=True) or {}).get('problem')
-    submission, err = _create_submission(user, problem_id, request.files.get('code'))
+    payload = request.get_json(silent=True) or {}
+    problem_id = request.form.get('problem') or payload.get('problem')
+    source_text = request.form.get('source') or payload.get('source')
+    submission, err = _create_submission(user, problem_id, request.files.get('code'), source_text)
     if err:
         status = 429 if '队列繁忙' in err else 400
         return jsonify({'error': err}), status

@@ -37,7 +37,7 @@ def run_evaluation(submission_id, team_name, problem_id, code_path):
     """执行评测，返回 (score, details)。契约见模块 docstring。"""
     spec = get_eval_spec(problem_id)
     if spec is None:
-        # LeetCode 三道展示题等：暂未开放评测
+        # 非 RISC-V 题（riscv_problems 里没有评测规格）：暂未开放评测
         return 0.0, _details('unsupported', '该题暂未开放评测', error='unsupported',
                              problem=problem_id)
 

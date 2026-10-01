@@ -2,13 +2,14 @@
 """
 赛题元数据（展示用）。
 
-- `matmul-4x4`：**唯一开放提交评测**的 RISC-V 题（评测规格见 riscv_problems.py，
-  评分口径见 docs/08）。`submittable=True`。
-- 其余三道为 LeetCode 热题 HOT 100 的演示题（#2 两数相加 / #3 无重复字符的最长子串 /
-  #5 最长回文子串），题序即 HOT 100 题单顺序（#1 简单、#4 困难，均跳过），
-  `submittable=False`——只展示题面，暂未接入评测。
+当前只有一道题：`matmul-4x4`——手写 RV32IM 汇编实现 4x4 定点矩阵乘，
+平台汇编链接后用 qemu-riscv32 真实执行并判分。
 
-此处只放"怎么展示"；"怎么评"在 riscv_problems.py，两者用同一个 id 关联。
+此处只放"怎么展示"；"怎么评"在 riscv_problems.py，两者用同一个 id 关联；
+评分口径与安全边界见 docs/08。
+
+`submittable` 标记该题是否开放提交评测。将来若要先上线题面、后接评测，
+把新题以 `submittable=False` 加进来即可，页面会自动显示为"暂未开放提交"。
 """
 
 PROBLEMS = [
@@ -16,7 +17,7 @@ PROBLEMS = [
         "id": "matmul-4x4",
         "no": 1,
         "code": "RV 1",
-        "submittable": True,          # 唯一开放提交评测的题目（走 RISC-V + qemu）
+        "submittable": True,          # 开放提交评测（RISC-V + qemu）
         "title": "4x4 定点矩阵乘",
         "summary": "手写 RV32IM 汇编实现 4x4 定点矩阵乘法，用 qemu 跑出真实结果并与参考比对。",
         "task": (
@@ -44,55 +45,6 @@ PROBLEMS = [
             "运行时约定：sp 已就绪，返回即 dump 内存；结果写入 a1 指向的 64 字节。"
         ),
     },
-    {
-        "id": "add-two-numbers",
-        "submittable": False,          # 展示题：暂未开放提交评测
-        "no": 2,
-        "code": "LC 2",
-        "title": "两数相加",
-        "summary": "两个逆序存储的非负整数链表相加，按同样形式返回结果链表。",
-        "task": (
-            "给你两个非空的链表，表示两个非负的整数。它们每位数字都是按照逆序的方式存储的，"
-            "并且每个节点只能存储一位数字。请你将两个数相加，并以相同形式返回一个表示和的链表。"
-            "你可以假设除了数字 0 之外，这两个数都不会以 0 开头。"
-        ),
-        "input": "两个单链表的头节点，节点值为 0–9 的一位数字，按个位在前的逆序存储整数。",
-        "output": "返回相加结果链表的头节点。逐节点与参考实现比对，链表结构与每一位数字须完全一致。",
-        "scale": "每条链表长度 1–100；每位数字 0–9；结果最多比原链表多一位（最高位进位）。",
-        "baseline": "参考 O(max(m, n))：一次遍历、逐位相加并维护进位。",
-        "hint": "较短的链表缺失位按 0 处理；遍历结束后若仍有进位，需额外新建一个值为 1 的节点。",
-        "formula": "示例：(2 → 4 → 3) 表示 342，(5 → 6 → 4) 表示 465，两者相加得 807，即 (7 → 0 → 8)。",
-    },
-    {
-        "id": "longest-substring",
-        "submittable": False,          # 展示题：暂未开放提交评测
-        "no": 3,
-        "code": "LC 3",
-        "title": "无重复字符的最长子串",
-        "summary": "在字符串中找出不含重复字符的最长连续子串，返回其长度。",
-        "task": "给定一个字符串 s，请你找出其中不含有重复字符的最长子串的长度。",
-        "input": "字符串 s，由英文字母、数字、符号和空格组成。",
-        "output": "返回最长无重复子串的长度（整数）。与参考实现比对，结果须完全一致。",
-        "scale": "0 ≤ s.length ≤ 5 × 10⁴；字符集为 ASCII。",
-        "baseline": "参考 O(n) 滑动窗口：用哈希集合或定长数组记录每个字符最近出现的位置。",
-        "hint": "用左右指针维护窗口；右指针遇到已出现的字符时，把左指针跳到该字符上一次出现位置的下一位。",
-        "formula": '示例：s = "abcabcbb"，答案是 3（"abc"）；s = "bbbbb"，答案是 1（"b"）。',
-    },
-    {
-        "id": "longest-palindrome",
-        "submittable": False,          # 展示题：暂未开放提交评测
-        "no": 5,
-        "code": "LC 5",
-        "title": "最长回文子串",
-        "summary": "在给定字符串中找出最长的回文子串（正读反读都相同的子串）。",
-        "task": "给你一个字符串 s，找到 s 中最长的回文子串。回文串是指正读和反读都相同的字符串。",
-        "input": "字符串 s，长度 1–1000，由数字和英文字母组成。",
-        "output": "返回最长的回文子串。与参考实现比对须一致；存在多个等长答案时，返回其中任意一个即可。",
-        "scale": "1 ≤ s.length ≤ 1000。",
-        "baseline": "参考 O(n²) 中心扩展法；进阶可用 O(n) 的 Manacher 算法。",
-        "hint": "回文中心可能是单个字符（奇数长度），也可能是两个相邻字符之间（偶数长度），两种中心都要向两侧扩展。",
-        "formula": '示例：s = "babad"，答案是 "bab" 或 "aba"；s = "cbbd"，答案是 "bb"。',
-    },
 ]
 
 _BY_ID = {p["id"]: p for p in PROBLEMS}
@@ -105,3 +57,8 @@ def get_problem(problem_id):
 
 def problem_ids():
     return [p["id"] for p in PROBLEMS]
+
+
+def submittable_problems():
+    """开放提交评测的题目。"""
+    return [p for p in PROBLEMS if p.get("submittable")]
