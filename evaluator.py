@@ -2,9 +2,21 @@
 """评测器：把提交编译成 RISC-V 并跑 qemu，判正确性、计分。
 
 对外只有一个入口 `run_evaluation()`，返回 `(score, details)`；
-`details['error']` 为 None 表示评测本身跑通（`tasks.py` 依赖这个契约）。
+`details['error']` 为 None 表示评测跑完（`tasks.py` 依赖这个契约）。
 
-设计要点（详见 docs/08）：
+## 计分（逐点独立）
+
+每题 10 个数据点，**逐点独立判定与计分**：
+
+    单点得分 = 分值 × min(1, 基准指令数 ÷ 本队指令数)    （做对才计，做错该点 0 分）
+    总分     = 10 个数据点之和
+
+所以本模块**不短路**：某个数据点错了，仍要继续跑完其余点。
+唯一的整题级失败是**编译失败**——它与输入无关，一次编译不过就整题 0 分
+（仍会跑完 10 个点？不：编译不通就没法跑，直接返回，`points_earned` 记 0）。
+
+## 设计要点（详见 docs/08）
+
 - **输入每次随机**：期望输出由 riscv_oracle 现场算，输入张量现场生成并嵌进
   wrapper。选手无法把答案写死——见 D1，这是整个评测的立足点。
 - **不回显原始字节**：details 里只给十进制数值差与结论，防止选手用
@@ -19,14 +31,13 @@ import json
 import os
 import random
 import shutil
-import tempfile
 import time
 
 from flask import current_app
 
 import riscv_oracle
 import riscv_runner
-from riscv_problems import get_eval_spec, layout
+from riscv_problems import get_eval_spec
 
 # 选手源码里禁止出现的汇编指示符：它们能在**汇编阶段**读宿主任意可读文件
 # （.incbin "/etc/passwd"），把编译期变成读取通道。单文件提交用不到它们。
@@ -37,10 +48,8 @@ def run_evaluation(submission_id, team_name, problem_id, code_path):
     """执行评测，返回 (score, details)。契约见模块 docstring。"""
     spec = get_eval_spec(problem_id)
     if spec is None:
-        # 非 RISC-V 题（riscv_problems 里没有评测规格）：暂未开放评测
         return 0.0, _details('unsupported', '该题暂未开放评测', error='unsupported',
                              problem=problem_id)
-
     try:
         return _evaluate_riscv_asm(spec, problem_id, code_path)
     except Exception as exc:                      # noqa: BLE001 —— 兜底，绝不让任务卡在 running
@@ -66,10 +75,13 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
     # 2) 源码预检
     ok, err, verdict = _precheck(spec, code_path)
     if not ok:
-        return 0.0, _details(verdict, err, error=verdict, problem=problem)
+        return 0.0, _details(verdict, err, error=verdict, problem=problem,
+                             full_score=spec['full_score'])
 
     budget = current_app.config['EVAL_TOTAL_BUDGET']
     cfg = _runner_cfg()
+    per_case = spec['points_per_case']
+    baseline = _load_baseline(spec, problem)
 
     work = riscv_runner.make_work_dir(current_app.config['EVAL_WORK_ROOT'])
     try:
@@ -78,21 +90,25 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
         shutil.copyfile(code_path, player)
         os.chmod(player, 0o644)
 
-        baseline = _load_baseline(spec, problem)
-
+        # 数据点共用同一份随机种子序列，便于按 seed 复现
+        rng = random.Random(random.randrange(2 ** 31))
         cases = []
-        seed = random.randrange(2 ** 31)
-        rng = random.Random(seed)
+        earned = 0.0
 
         for idx in range(spec['case_count']):
-            case_seed = rng.randrange(2 ** 31)
-            if time.time() - started > budget:
-                return 0.0, _details('timeout', '评测超时，请简化实现',
-                                     error='timeout', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
-
-            case = {'case': idx, 'seed': case_seed}
+            case = {'case': idx, 'seed': None, 'verdict': None, 'points': 0.0,
+                    'points_max': per_case, 'instructions': None,
+                    'baseline': baseline, 'ratio': None, 'detail': ''}
             cases.append(case)
+
+            # 预算兜底：超了就停止评测，**已挣到的分保留**（逐点语义），
+            # 剩余数据点记 0 分并说明原因，而不是把整题清零
+            if time.time() - started > budget:
+                case.update(verdict='skipped', detail='评测总时长超出预算，该数据点未评测')
+                continue
+
+            case_seed = rng.randrange(2 ** 31)
+            case['seed'] = case_seed
 
             values = riscv_oracle.make_input(case_seed, spec)
             expected = riscv_oracle.reference(values, spec)
@@ -102,79 +118,57 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
 
             ok, cerr = riscv_runner.compile_elf(wrapper, player, elf, cfg, work)
             if not ok:
+                # 编译失败与输入无关 → 整题失败，后续数据点必然同样失败
                 case.update(verdict='compile_error', detail=cerr)
                 return 0.0, _details('compile_error', f'编译失败：{cerr}',
-                                     error='compile_error', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                                     error='compile_error', problem=problem,
+                                     baseline_instructions=baseline, cases=cases,
+                                     full_score=spec['full_score'])
 
             rc, out, _serr = riscv_runner.run_elf(elf, cfg, work)
             if rc is None:
                 case.update(verdict='timeout', detail='运行超时')
-                return 0.0, _details('timeout', '运行超时（可能存在死循环）',
-                                     error='timeout', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                continue
             if rc < 0:
-                case.update(verdict='runtime_error', detail=f'信号 {-rc}')
-                return 0.0, _details('runtime_error', _signal_message(rc),
-                                     error='runtime_error', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                case.update(verdict='runtime_error', detail=_signal_message(rc))
+                continue
             if rc != 0:
                 case.update(verdict='runtime_error', detail=f'退出码 {rc}')
-                return 0.0, _details('runtime_error', f'程序异常退出（退出码 {rc}）',
-                                     error='runtime_error', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                continue
 
             got, guard_ok, gmsg = riscv_runner.parse_dump(out, spec)
             if not guard_ok:
                 case.update(verdict='invalid', detail=gmsg)
-                return 0.0, _details('invalid', gmsg, error='invalid', problem=problem,
-                                     seed=seed, baseline_instructions=baseline, cases=cases)
+                continue
 
             match, mmsg = riscv_oracle.check_output(got, expected, spec)
             if not match:
                 case.update(verdict='invalid', detail=mmsg)
-                return 0.0, _details('invalid', f'输出不正确。{mmsg}', error='invalid',
-                                     problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                continue
 
-            # 4) 只有正确性过了才数指令（单步是最慢的一环）
+            # 4) 只有该点正确才数指令（单步最慢）
             if time.time() - started > budget:
-                return 0.0, _details('timeout', '评测超时（数指令阶段）',
-                                     error='timeout', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                case.update(verdict='skipped', detail='评测总时长超出预算，该数据点未数指令')
+                continue
             trace = os.path.join(work, f'trace_{idx}.log')
             count, truncated = riscv_runner.count_instructions(elf, cfg, work, trace)
             if truncated:
                 case.update(verdict='timeout', detail='指令数超出上限')
-                return 0.0, _details('timeout', '指令数超出上限（可能存在超长循环）',
-                                     error='timeout', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                continue
             if count is None:
-                case.update(verdict='runtime_error', detail='数指令失败')
-                return 0.0, _details('runtime_error', '指令计数失败，请重试',
-                                     error='runtime_error', problem=problem, seed=seed,
-                                     baseline_instructions=baseline, cases=cases)
+                case.update(verdict='runtime_error', detail='指令计数失败')
+                continue
 
-            case.update(verdict='accepted', instructions=count,
-                        baseline=baseline, ratio=_ratio(baseline, count))
+            ratio = _ratio(baseline, count)
+            pts = round(per_case * ratio, 3)
+            earned += pts
+            case.update(verdict='accepted', instructions=count, ratio=ratio,
+                        points=pts)
 
-        # 5) 计分：取**最差用例**的加速比，防单用例爆表刷分
-        score_per_case = min(c['ratio'] for c in cases)
-        score = round(min(1.0, score_per_case) * spec['full_score'], 2)
-        worst = min(cases, key=lambda c: c['ratio'])
-        detail = {
-            'verdict': 'accepted',
-            'error': None,
-            'message': f'通过 {len(cases)} 个用例，得分 {score}',
-            'problem': problem,
-            'seed': seed,
-            'baseline_instructions': baseline,
-            'player_instructions': worst['instructions'],
-            'score': score,
-            'cases': cases,
-            'timing': {'total_s': round(time.time() - started, 2)},
-        }
-        return score, detail
+        score = round(earned, 2)
+        passed = sum(1 for c in cases if c['verdict'] == 'accepted')
+        return score, _summary(problem, spec, cases, score, passed,
+                               baseline, started)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -182,6 +176,45 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
 # ---------------------------------------------------------------------------
 # 辅助
 # ---------------------------------------------------------------------------
+
+def _summary(problem, spec, cases, score, passed, baseline, started):
+    """把逐点结果汇总成给选手看的 details。verdict 反映整体结论。"""
+    if passed == spec['case_count']:
+        verdict, err = 'accepted', None
+        message = (f'全部 {passed}/{spec["case_count"]} 个数据点通过，得分 '
+                   f'{score}/{spec["full_score"]}')
+    elif passed == 0:
+        # 整题 0 分：按失败记录（与既有 standings 口径一致——0 分不占名额）。
+        # 归因：10 个数据点都是同一种失败原因时沿用该原因（timeout / 编译失败 …），
+        # 混杂则统一记 invalid——否则"全超时"会被笼统说成"结果不正确"。
+        reasons = {c['verdict'] for c in cases if c['verdict'] != 'skipped'}
+        verdict = reasons.pop() if len(reasons) == 1 else 'invalid'
+        err = verdict
+        message = (f'没有数据点通过（0/{spec["case_count"]}），得分 '
+                   f'0/{spec["full_score"]}')
+    else:
+        # 部分通过：已挣到的分有效，按成功记录以计入榜单
+        verdict, err = 'partial', None
+        message = (f'通过 {passed}/{spec["case_count"]} 个数据点，得分 '
+                   f'{score}/{spec["full_score"]}')
+
+    return {
+        'verdict': verdict,
+        'error': err,
+        'message': message,
+        'problem': problem,
+        'baseline_instructions': baseline,
+        'player_instructions': min((c['instructions'] for c in cases
+                                    if c['instructions'] is not None), default=None),
+        'score': score,
+        'full_score': spec['full_score'],
+        'passed_cases': passed,
+        'total_cases': spec['case_count'],
+        'points_per_case': spec['points_per_case'],
+        'cases': cases,
+        'timing': {'total_s': round(time.time() - started, 2)},
+    }
+
 
 def _runner_cfg():
     c = current_app.config
@@ -223,8 +256,6 @@ def _precheck(spec, code_path):
             return False, (f'源码包含被禁止的指示符 {directive}：'
                            f'单文件提交不允许读取外部文件'), 'compile_error'
 
-    # `call <symbol>` / `jal` 指向的入口必须在源码里定义，否则链接会失败——
-    # 这里只做可读性更好的提前提示，真正判定交给链接器
     entry = spec['entry_symbol']
     if entry not in text:
         return False, (f'未找到入口符号 {entry}，请定义全局符号 '
@@ -267,17 +298,19 @@ def _signal_message(rc):
     return f'程序被信号 {sig} 终止'
 
 
-def _details(verdict, message, error=None, problem=None, seed=None,
-             baseline_instructions=None, cases=None, debug=None):
+def _details(verdict, message, error=None, problem=None, cases=None,
+             baseline_instructions=None, full_score=None, debug=None):
     d = {
         'verdict': verdict,
         'error': error,
         'message': message,
         'problem': problem,
-        'seed': seed,
         'baseline_instructions': baseline_instructions,
         'player_instructions': None,
         'score': 0.0,
+        'full_score': full_score,
+        'passed_cases': 0,
+        'total_cases': None,
         'cases': cases or [],
     }
     if debug:

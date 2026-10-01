@@ -3,15 +3,19 @@
 
 {% set verdict_badge = {
   'accepted': 'vbadge-accepted',
+  'partial': 'vbadge-warn',
   'timeout': 'vbadge-warn',
+  'skipped': 'vbadge-pending',
   'unsupported': 'vbadge-pending',
   'internal_error': 'vbadge-critical',
 } %}
 {% set verdict_label = {
-  'accepted': '通过',
+  'accepted': '全部通过',
+  'partial': '部分通过',
   'compile_error': '编译失败',
   'invalid': '结果不正确',
   'timeout': '超时',
+  'skipped': '未评测',
   'runtime_error': '运行错误',
   'internal_error': '系统错误',
   'unsupported': '暂未开放评测',
@@ -56,17 +60,20 @@
     {% else %}
       <p class="mb-2">
         {% if details and details.score is not none %}
-        <strong>得分：{{ '%.2f'|format(details.score) }}</strong>
+        <strong>得分：{{ '%.2f'|format(details.score) }}
+          {%- if details.full_score %} / {{ details.full_score }}{% endif %}</strong>
         {% endif %}
         {% if details and details.message %}
         <span class="text-body-secondary">— {{ details.message }}</span>
         {% endif %}
       </p>
-      {% if details and details.verdict == 'accepted' %}
+      {% if details and details.cases %}
       <dl class="spec">
-        <dt>基准指令数</dt><dd class="mono">{{ details.baseline_instructions }}</dd>
-        <dt>本队指令数</dt><dd class="mono">{{ details.player_instructions }}</dd>
-        <dt>评测种子</dt><dd class="mono">{{ details.seed }}</dd>
+        <dt>数据点</dt>
+        <dd class="mono">{{ details.passed_cases }} / {{ details.total_cases }} 通过
+          （每点 {{ details.points_per_case }} 分）</dd>
+        <dt>基准指令数</dt><dd class="mono">{{ details.baseline_instructions or '—' }}</dd>
+        <dt>最少指令数</dt><dd class="mono">{{ details.player_instructions or '—' }}</dd>
       </dl>
       {% endif %}
     {% endif %}
@@ -80,8 +87,9 @@
     <table class="table table-standings align-middle">
       <thead>
         <tr>
-          <th scope="col">用例</th>
+          <th scope="col">数据点</th>
           <th scope="col">判定</th>
+          <th scope="col" class="text-end">得分</th>
           <th scope="col" class="text-end">指令数</th>
           <th scope="col" class="text-end">基准</th>
           <th scope="col" class="text-end">比值</th>
@@ -96,6 +104,7 @@
               {{ verdict_label.get(c.verdict, c.verdict) }}
             </span>
           </td>
+          <td class="n">{{ '%.2f'|format(c.points or 0) }} / {{ c.points_max }}</td>
           <td class="n">{{ c.instructions if c.instructions is not none else '—' }}</td>
           <td class="n">{{ c.baseline if c.baseline else '—' }}</td>
           <td class="n">
@@ -105,7 +114,7 @@
         {% if c.detail %}
         <tr>
           <td></td>
-          <td colspan="4" class="small text-body-secondary">{{ c.detail }}</td>
+          <td colspan="5" class="small text-body-secondary">{{ c.detail }}</td>
         </tr>
         {% endif %}
         {% endfor %}

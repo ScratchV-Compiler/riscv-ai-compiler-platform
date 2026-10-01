@@ -30,10 +30,10 @@ CFG = {
 }
 
 
-def build_reference_asm(name):
-    """把 reference/<name>.c 编成 RV32IM 汇编。"""
-    src = os.path.join(REFERENCE_DIR, f'{name}.c')
-    asm = os.path.join(REFERENCE_DIR, f'{name}.s')
+def build_reference_asm(source_rel):
+    """把 reference/<x>.c 编成 RV32IM 汇编，返回 .s 路径。"""
+    src = os.path.join(ROOT, source_rel)
+    asm = os.path.splitext(src)[0] + '.s'
     subprocess.run([
         'clang', '--target=riscv32-linux-gnu', '-march=rv32im', '-mabi=ilp32',
         '-O2', '-S', src, '-o', asm,
@@ -50,7 +50,8 @@ def measure(problem_id, spec, asm_path):
         os.chmod(player, 0o644)
 
         counts = []
-        for idx in range(spec['case_count']):
+        # 抽 3 个 seed 验证「指令数与输入无关」即可，不必跑满 10 个数据点
+        for idx in range(3):
             seed = 1000 + idx
             values = riscv_oracle.make_input(seed, spec)
             expected = riscv_oracle.reference(values, spec)
@@ -94,7 +95,8 @@ def main():
             data = json.load(f)
 
     for problem_id, spec in riscv_problems.EVAL_SPECS.items():
-        asm = build_reference_asm('matmul')     # 目前只有 matmul 一道
+        # 每题的参考解在 spec['reference'] 里指定，如 reference/add.c
+        asm = build_reference_asm(spec['reference'])
         count, all_counts = measure(problem_id, spec, asm)
         data[problem_id] = {
             'baseline_instructions': count,

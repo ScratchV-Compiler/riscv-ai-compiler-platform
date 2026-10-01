@@ -10,7 +10,7 @@ from config import Config
 from models import db, Submission
 from tasks import add_task, start_worker, queue_depth, reap_stale_running
 from problems import PROBLEMS, get_problem, problem_ids
-from riscv_problems import get_eval_spec
+from riscv_problems import get_eval_spec, EVAL_SPECS
 from standings import build_standings, last_reset_utc
 from auth import bp as auth_bp, csrf, current_user, login_required
 from seed import seed_demo_submissions
@@ -35,8 +35,15 @@ reap_stale_running(app)
 
 @app.context_processor
 def inject_current_user():
-    """模板全局：current_user（未登录为 None）。"""
-    return {'current_user': current_user()}
+    """模板全局：current_user（未登录为 None）+ 评测规格查询。
+
+    模板用 `eval_spec(p.id)` 取分值/数据点数，避免在 problems.py 里再抄一份。
+    """
+    return {
+        'current_user': current_user(),
+        'eval_spec': get_eval_spec,
+        'eval_specs': EVAL_SPECS,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +211,7 @@ def submit_page():
         spec = get_eval_spec(problem['id']) or {}
         team = user.team
         return render_template(
-            'submit.html', problem=problem, team=team,
+            'submit.html', problem=problem, team=team, spec=spec,
             suffix=spec.get('file_suffix', '.s'),
             entry_symbol=spec.get('entry_symbol', 'cnn_entry'),
             quota={'used': _team_quota_used(team.name) if team else 0,
