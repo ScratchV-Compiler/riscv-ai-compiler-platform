@@ -1,35 +1,53 @@
 {
-  "matmul-4x4": {
-    "baseline_instructions": 360,
-    "reference": "reference/matmul.s",
-    "measured_counts": [
-      360,
-      360,
-      360
-    ],
-    "march": "rv32im",
-    "no_relax": true
-  },
   "add": {
-    "baseline_instructions": 536,
-    "reference": "reference/add.s",
-    "measured_counts": [
-      536,
-      536,
-      536
-    ],
+    "by_size": {
+      "64": 601,
+      "128": 1177,
+      "256": 2329,
+      "512": 4633,
+      "1024": 9241,
+      "1536": 13849,
+      "2048": 18458,
+      "2560": 23066,
+      "3072": 27674,
+      "4096": 36889
+    },
     "march": "rv32im",
-    "no_relax": true
+    "no_relax": true,
+    "reference": "reference/add.s"
+  },
+  "matmul-4x4": {
+    "by_size": {
+      "4": 803,
+      "8": 5389,
+      "12": 17237,
+      "16": 39805,
+      "20": 76549,
+      "24": 130923,
+      "32": 306397,
+      "40": 593867,
+      "48": 1020989,
+      "64": 2404765
+    },
+    "march": "rv32im",
+    "no_relax": true,
+    "reference": "reference/matmul.s"
   },
   "reducesum": {
-    "baseline_instructions": 344,
-    "reference": "reference/reducesum.s",
-    "measured_counts": [
-      344,
-      344,
-      344
-    ],
+    "by_size": {
+      "64": 344,
+      "128": 664,
+      "256": 1306,
+      "512": 2586,
+      "1024": 5146,
+      "1536": 7706,
+      "2048": 10267,
+      "2560": 12827,
+      "3072": 15387,
+      "4096": 20506
+    },
     "march": "rv32im",
-    "no_relax": true
+    "no_relax": true,
+    "reference": "reference/reducesum.s"
   }
 }

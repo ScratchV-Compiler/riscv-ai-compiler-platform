@@ -72,8 +72,9 @@
         <dt>数据点</dt>
         <dd class="mono">{{ details.passed_cases }} / {{ details.total_cases }} 通过
           （每点 {{ details.points_per_case }} 分）</dd>
-        <dt>基准指令数</dt><dd class="mono">{{ details.baseline_instructions or '—' }}</dd>
-        <dt>最少指令数</dt><dd class="mono">{{ details.player_instructions or '—' }}</dd>
+        <dt>最少指令数</dt>
+        <dd class="mono">{{ details.player_instructions or '—' }}
+          <span class="text-body-secondary small">（各数据点中最小的一次）</span></dd>
       </dl>
       {% endif %}
     {% endif %}

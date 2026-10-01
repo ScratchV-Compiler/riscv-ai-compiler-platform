@@ -10,7 +10,8 @@ from config import Config
 from models import db, Submission
 from tasks import add_task, start_worker, queue_depth, reap_stale_running
 from problems import PROBLEMS, get_problem, problem_ids, submittable_problems
-from riscv_problems import get_eval_spec, EVAL_SPECS
+from riscv_problems import (get_eval_spec, EVAL_SPECS, case_elements,
+                            case_label, case_purpose)
 from standings import build_standings, last_reset_utc
 from auth import bp as auth_bp, csrf, current_user, login_required
 from seed import seed_demo_submissions
@@ -43,6 +44,10 @@ def inject_current_user():
         'current_user': current_user(),
         'eval_spec': get_eval_spec,
         'eval_specs': EVAL_SPECS,
+        # 数据点表用
+        'case_elements': case_elements,
+        'case_label': case_label,
+        'case_purpose': case_purpose,
     }
 
 
@@ -122,7 +127,8 @@ def api_problems():
             'code': p['code'],
             'title': p['title'],
             'summary': p['summary'],
-            'full_score': 100,
+            'full_score': (get_eval_spec(p['id']) or {}).get('full_score'),
+            'case_count': (get_eval_spec(p['id']) or {}).get('case_count'),
         }
         for p in PROBLEMS
     ])

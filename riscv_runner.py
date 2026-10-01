@@ -137,24 +137,25 @@ def _run(cmd, profile, cfg, cwd, timeout, stdin=None):
 # wrapper 生成
 # ---------------------------------------------------------------------------
 
-def build_wrapper(spec, values, path):
+def build_wrapper(spec, values, n, path):
     """生成裸机 wrapper：布置内存、灌入随机输入、调用选手的 cnn_entry、dump 内存。
 
-    ABI 契约（与 ScratchV 同构，见 third_party/ScratchV/tests/test_standalone_execution.py）：
+    ABI 契约（在 ScratchV 的基础上**加了规模参数**，见 docs/08）：
     - 选手须定义全局符号 `cnn_entry`
-    - 入参 a0 = 输入张量首址，a1 = 输出张量首址
+    - 入参 a0 = 输入张量首址，a1 = 输出张量首址，**a2 = 规模 N**
+      （matmul 为矩阵阶数，add/reducesum 为向量长度）——选手必须写尺寸无关的代码
     - 输出为 int32 Q16.16
     - 内存布局 guard|workspace|guard|output|guard，guard 非零即越界写
     - sp 指向 workspace 顶端（栈向下长在 workspace 内）
     """
-    lay = layout(spec)
+    lay = layout(spec, n)
     total = lay['total']
-    guard = spec['guard_bytes']
-    ws = spec['workspace_bytes']
-    out_bytes = spec['output_elements'] * 4
+    guard = lay['guard_lo'][1]        # 保护区大小由 layout 决定，规格里不再重复存
+    ws = lay['workspace'][1]
+    out_bytes = lay['output'][1]
     words = ', '.join(str(int(v)) for v in values)
 
-    asm = f'''# 由平台生成，勿手改。对应 riscv_problems.layout()：
+    asm = f'''# 由平台生成，勿手改。对应 riscv_problems.layout(spec, N={n})：
 #   guard_lo({guard}) | workspace({ws}) | guard_mid({guard}) | output({out_bytes}) | guard_hi({guard})
 .option norvc
 .option norelax
@@ -165,6 +166,7 @@ _start:
     la   sp, __stack_top
     la   a0, input_tensor
     la   a1, output_tensor
+    li   a2, {n}
     call {spec['entry_symbol']}
     li   a0, 1
     la   a1, __dump_start
@@ -267,12 +269,12 @@ def count_instructions(elf_path, cfg, cwd, trace_path):
     return count, truncated
 
 
-def parse_dump(data, spec):
+def parse_dump(data, spec, n):
     """解析内存 dump。返回 (values, guard_ok, message)。
 
     message 只说明「哪一段 guard 被破坏」，**不含任何原始字节**（防外带，见 docs/08）。
     """
-    lay = layout(spec)
+    lay = layout(spec, n)
     if len(data) != lay['total']:
         return None, False, f'内存 dump 长度不符：期望 {lay["total"]} 字节，实际 {len(data)}'
 
@@ -283,8 +285,7 @@ def parse_dump(data, spec):
             return None, False, f'越界写：{label}的保护区被破坏'
 
     off, size = lay['output']
-    n = spec['output_elements']
-    values = list(struct.unpack(f'<{n}i', data[off:off + size]))
+    values = list(struct.unpack(f'<{size // 4}i', data[off:off + size]))
     return values, True, ''
 
 

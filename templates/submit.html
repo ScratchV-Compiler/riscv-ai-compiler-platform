@@ -118,19 +118,26 @@ cnn_entry:
     <dl class="spec">
       <dt>入口符号</dt>
       <dd>必须定义全局符号 <span class="mono">{{ entry_symbol }}</span>，入参
-        a0 = 输入首址、a1 = 输出首址。</dd>
+        a0 = 输入首址、a1 = 输出首址、<strong>a2 = 规模 N</strong>
+        （{{ spec.param_meaning }}）。<strong>必须写尺寸无关的代码</strong>——
+        10 个数据点的规模各不相同。</dd>
       <dt>内存布局</dt>
-      <dd>保护区(256B) | 工作区(1024B) | 保护区(256B) | 输出区(64B) | 保护区(256B)。
+      <dd>保护区(256B) | 工作区 | 保护区(256B) | 输出区 | 保护区(256B)。
+        工作区与输出区的大小随 <span class="mono">a2</span> 变化。
         任一保护区被写坏即判越界失败。</dd>
+      <dt>越界与规模</dt>
+      <dd>输出区大小 = {{ spec.note }}。规模越大，工作区与输出区越大——
+        按 <span class="mono">a2</span> 算，不要写死常量。</dd>
       <dt>栈指针</dt>
       <dd>调用前 sp 已指向工作区顶端，栈可向下正常使用。</dd>
       <dt>指令集</dt>
       <dd>固定 <span class="mono">-march=rv32im</span>（无压缩扩展、无浮点/原子指令），
         关闭链接松弛。</dd>
       <dt>计分</dt>
-      <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>，逐点独立计分：做对的点得分 =
-        每点分值（{{ spec.points_per_case }} 分）× min(1, 基准指令数 ÷ 本队指令数)，
-        做错只丢该点的分。本题满分 {{ spec.full_score }}。</dd>
+      <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>（规模逐点递增，见赛题页表格），
+        逐点独立计分：做对的点得分 = 每点分值（{{ spec.points_per_case }} 分）×
+        min(1, <strong>该点</strong>基准指令数 ÷ 本队该点指令数)，做错只丢该点的分。
+        本题满分 {{ spec.full_score }}。</dd>
       <dt>防作弊</dt>
       <dd>每次评测的输入由平台随机生成，结果与平台独立算出的参考值比对，无法预先写死答案。</dd>
     </dl>
