@@ -10,7 +10,7 @@ TEAM_MAX_SIZE = 3  # 每队人数上限（策划案：每队 1~3 人）
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     team_name = db.Column(db.String(80), nullable=False)
-    problem_id = db.Column(db.String(20), nullable=False)  # 'add-two-numbers' 等
+    problem_id = db.Column(db.String(20), nullable=False)  # 如 'matmul-4x4'
     code_path = db.Column(db.String(200), nullable=False)   # 存储源码路径
     status = db.Column(db.String(20), default='pending')    # pending, running, success, failed
     score = db.Column(db.Float, default=0.0)
@@ -70,6 +70,25 @@ class User(db.Model):
             'name': self.name,
             'role': self.role,
         }
+
+
+class PasswordReset(db.Model):
+    """一次性密码重置令牌。
+
+    只存 token 的 sha256 摘要：即使数据库泄露也无法直接拿去重置密码。
+    重置成功后写 used_at 立即失效；过期时间见 RESET_TOKEN_TTL_SECONDS。
+    """
+    __tablename__ = 'password_resets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    request_ip = db.Column(db.String(45), nullable=True)
+
+    user = db.relationship('User', backref='password_resets')
 
 
 class Team(db.Model):

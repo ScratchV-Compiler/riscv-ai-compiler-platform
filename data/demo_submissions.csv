@@ -1,47 +1,60 @@
 team_name,problem_id,status,score,offset_minutes
-回文猎手,longest-palindrome,success,47.04,240
-滑动窗口炼丹,add-two-numbers,success,65.33,241
-链表小分队,add-two-numbers,success,70.43,244
-滑动窗口炼丹,longest-substring,success,53.20,245
-滑动窗口炼丹,add-two-numbers,success,56.91,247
-DP 悟道,add-two-numbers,success,47.75,252
-滑动窗口炼丹,longest-substring,success,66.02,253
-RISC-V 先锋队,add-two-numbers,success,75.70,259
-回文猎手,add-two-numbers,success,70.79,265
-编译器摸鱼组,longest-palindrome,success,43.93,279
-回文猎手,longest-substring,success,53.56,283
-编译器摸鱼组,add-two-numbers,success,38.57,291
-滑动窗口炼丹,longest-palindrome,success,69.39,295
-编译器摸鱼组,longest-substring,success,54.37,297
-滑动窗口炼丹,longest-palindrome,success,58.85,301
-编译器摸鱼组,longest-palindrome,success,49.64,304
-链表小分队,add-two-numbers,success,71.49,316
-回文猎手,longest-substring,success,54.17,319
-DP 悟道,add-two-numbers,success,57.49,321
-链表小分队,longest-substring,success,75.41,330
-编译器摸鱼组,longest-substring,success,54.78,336
-DP 悟道,add-two-numbers,success,44.74,339
-DP 悟道,longest-palindrome,success,45.36,344
-回文猎手,longest-palindrome,success,54.68,354
-编译器摸鱼组,longest-substring,success,38.81,356
-回文猎手,longest-substring,success,53.33,358
-DP 悟道,longest-palindrome,success,41.92,370
-回文猎手,longest-palindrome,success,46.60,373
-编译器摸鱼组,add-two-numbers,success,54.48,375
-滑动窗口炼丹,longest-palindrome,success,62.88,406
-编译器摸鱼组,longest-palindrome,success,51.09,407
-滑动窗口炼丹,longest-palindrome,success,55.09,409
-DP 悟道,longest-substring,success,63.22,414
-DP 悟道,longest-substring,success,63.00,440
-滑动窗口炼丹,add-two-numbers,success,52.50,441
-DP 悟道,longest-palindrome,success,52.90,459
-DP 悟道,add-two-numbers,success,62.50,463
-滑动窗口炼丹,add-two-numbers,success,67.19,473
-编译器摸鱼组,longest-substring,success,48.38,474
-编译器摸鱼组,add-two-numbers,success,55.57,486
-回文猎手,longest-palindrome,success,60.80,494
-回文猎手,longest-substring,success,56.30,496
-RISC-V 先锋队,longest-palindrome,success,75.28,498
-编译器摸鱼组,add-two-numbers,success,43.02,500
-RISC-V 先锋队,longest-substring,success,78.60,504
-链表小分队,longest-palindrome,success,71.34,510
+RISC-V 先锋队,reducesum,success,38.20,14
+展开循环小分队,add,success,22.90,41
+RISC-V 先锋队,matmul-4x4,success,25.34,65
+指令数屠夫,matmul-4x4,success,21.09,78
+RISC-V 先锋队,add,success,29.10,104
+展开循环小分队,matmul-4x4,success,20.70,130
+流水线突击队,add,success,15.63,150
+RISC-V 先锋队,reducesum,success,25.80,170
+展开循环小分队,add,success,19.47,194
+定点特工队,matmul-4x4,success,19.40,213
+编译器摸鱼组,matmul-4x4,success,14.80,232
+定点特工队,reducesum,success,24.70,259
+指令数屠夫,add,success,26.80,289
+RISC-V 先锋队,add,success,21.19,311
+寄存器分配师,reducesum,success,36.50,327
+定点特工队,matmul-4x4,success,15.04,348
+展开循环小分队,add,success,21.90,378
+寄存器分配师,add,success,25.44,395
+流水线突击队,reducesum,success,28.35,415
+定点特工队,add,success,18.60,425
+展开循环小分队,matmul-4x4,success,19.60,445
+编译器摸鱼组,add,success,13.58,461
+指令数屠夫,matmul-4x4,success,25.20,485
+指令数屠夫,reducesum,success,35.10,515
+定点特工队,reducesum,success,22.99,528
+展开循环小分队,reducesum,success,20.55,558
+寄存器分配师,reducesum,success,34.73,581
+展开循环小分队,matmul-4x4,success,13.52,609
+流水线突击队,add,success,24.30,634
+编译器摸鱼组,add,success,14.13,648
+RISC-V 先锋队,matmul-4x4,success,28.60,675
+指令数屠夫,add,success,24.73,695
+寄存器分配师,add,success,26.61,716
+寄存器分配师,matmul-4x4,success,27.90,744
+指令数屠夫,reducesum,success,26.27,758
+指令数屠夫,reducesum,success,32.57,772
+流水线突击队,reducesum,success,29.62,793
+寄存器分配师,matmul-4x4,success,23.04,811
+展开循环小分队,reducesum,success,29.40,839
+定点特工队,add,success,11.54,854
+指令数屠夫,matmul-4x4,success,19.96,864
+展开循环小分队,add,success,18.92,886
+流水线突击队,matmul-4x4,success,26.10,915
+寄存器分配师,add,success,27.40,944
+编译器摸鱼组,add,success,15.20,958
+RISC-V 先锋队,matmul-4x4,success,27.83,971
+寄存器分配师,add,success,17.93,999
+编译器摸鱼组,reducesum,success,19.30,1014
+指令数屠夫,reducesum,success,32.24,1035
+编译器摸鱼组,matmul-4x4,success,13.43,1053
+流水线突击队,reducesum,success,25.74,1077
+编译器摸鱼组,reducesum,success,16.91,1093
+流水线突击队,reducesum,success,31.80,1108
+编译器摸鱼组,matmul-4x4,success,11.90,1120
+寄存器分配师,reducesum,success,33.65,1149
+定点特工队,reducesum,success,20.42,1174
+流水线突击队,matmul-4x4,success,21.80,1204
+RISC-V 先锋队,matmul-4x4,success,23.96,1217
+流水线突击队,matmul-4x4,success,19.64,1231

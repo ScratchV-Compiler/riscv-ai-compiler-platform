@@ -1,0 +1,4 @@
+[submodule "third_party/ScratchV"]
+	path = third_party/ScratchV
+	url = git@github.com:ScratchV-Compiler/ScratchV.git
+	branch = main

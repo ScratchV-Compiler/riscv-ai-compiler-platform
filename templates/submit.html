@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block title %}提交 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block head %}
+<style>
+  /* 提交方式切换：纯 CSS（radio + 兄弟选择器），不依赖 JS。
+     radio 与面板是同辈，故用 ~ 选择器显示对应面板。 */
+  .submit-mode > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+  .mode-tabs { display: inline-flex; gap: 0.25rem; padding: 0.2rem; margin-bottom: 0.9rem;
+               background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; }
+  .mode-tabs label { padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer;
+                     font-size: 0.9rem; font-weight: 560; margin: 0; }
+  .submit-mode > input#mode-file:checked ~ .mode-tabs label[for="mode-file"],
+  .submit-mode > input#mode-paste:checked ~ .mode-tabs label[for="mode-paste"] {
+    background: var(--brand-500); color: #fff;
+  }
+  .submit-mode > input[type="radio"]:focus-visible ~ .mode-tabs { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+  .mode-panel { display: none; }
+  .submit-mode > input#mode-file:checked ~ .mode-panel.mode-file,
+  .submit-mode > input#mode-paste:checked ~ .mode-panel.mode-paste { display: block; }
+  .mode-panel textarea { font-family: var(--mono); font-size: 0.85rem; min-height: 16rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>提交代码</h1>
+  <p class="lede">
+    提交 {{ suffix }} 源码，平台会用 clang 汇编链接后在 qemu-riscv32 上真实执行，
+    先判正确性，通过后按动态指令数计分。可以上传文件，也可以直接粘贴。
+  </p>
+</div>
+
+{% if not current_user %}
+<section class="panel">
+  <div class="panel-head"><h2>需要先登录</h2></div>
+  <div class="panel-body">
+    <p>提交需要登录账号，且账号须已加入一支队伍。</p>
+    <a class="btn btn-brand" href="{{ url_for('auth.login_page', next=request.path) }}">去登录</a>
+  </div>
+</section>
+{% elif not team %}
+<section class="panel">
+  <div class="panel-head"><h2>需要先组队</h2></div>
+  <div class="panel-body">
+    <p>本赛事按队伍计分，请先创建或加入一支队伍再提交。</p>
+    <a class="btn btn-brand" href="{{ url_for('auth.team_join_page') }}">去组队</a>
+  </div>
+</section>
+{% else %}
+{# 赛题切换：普通链接跳转（带 ?problem=），URL 可分享、浏览器后退可用、不依赖 JS。
+   切换会整页刷新，未提交的粘贴内容不保留。 #}
+<div class="filter-group mb-3" style="flex-wrap: wrap;">
+  <span class="filter-label">赛题</span>
+  <span class="seg" role="group" aria-label="切换赛题">
+    {% for p in problems %}
+    {% set ps = eval_spec(p.id) %}
+    <a href="{{ url_for('submit_page', problem=p.id) }}"
+       title="{{ p.title }} · {{ ps.case_count }} 个数据点 · 满分 {{ ps.full_score }}"
+       {% if p.id == problem.id %}aria-current="true"{% endif %}>{{ p.title }}</a>
+    {% endfor %}
+  </span>
+</div>
+
+<section class="panel auth-panel">
+  <div class="panel-head">
+    <h2>提交到「{{ problem.title }}」</h2>
+    <span class="badge-id">{{ problem.id }}</span>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('submit_page') }}" enctype="multipart/form-data" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="problem" value="{{ problem.id }}">
+
+      <div class="submit-mode">
+        <input type="radio" id="mode-file" name="mode" value="file" checked>
+        <input type="radio" id="mode-paste" name="mode" value="paste">
+        <div class="mode-tabs" role="tablist" aria-label="提交方式">
+          <label for="mode-file">上传文件</label>
+          <label for="mode-paste">粘贴代码</label>
+        </div>
+
+        <div class="mode-panel mode-file" role="tabpanel" aria-labelledby="mode-file">
+          <label class="form-label" for="code">源码文件（{{ suffix }}）</label>
+          <input class="form-control" type="file" id="code" name="code" accept="{{ suffix }}">
+        </div>
+
+        <div class="mode-panel mode-paste" role="tabpanel" aria-labelledby="mode-paste">
+          <label class="form-label" for="source">源码内容</label>
+          <textarea class="form-control" id="source" name="source" spellcheck="false"
+                    placeholder="; 在此粘贴 RV32IM 汇编，例如：
+    .text
+    .globl cnn_entry
+cnn_entry:
+    ..."></textarea>
+        </div>
+      </div>
+
+      <div class="form-hint mb-3">
+        两种方式填其一即可；同时提供时以<b>上传的文件</b>为准。
+        源码须定义全局符号 <span class="mono">{{ entry_symbol }}</span>，
+        且不允许使用 <span class="mono">.incbin</span> / <span class="mono">.include</span>。
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-brand" type="submit">提交评测</button>
+        <span class="small">
+          以队伍「{{ team.name }}」提交 · 今日已用 {{ quota.used }}/{{ quota.limit }} 次
+        </span>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>评测约定</h2></div>
+  <div class="panel-body">
+    <dl class="spec">
+      <dt>入口符号</dt>
+      <dd>必须定义全局符号 <span class="mono">{{ entry_symbol }}</span>，入参
+        a0 = 输入首址、a1 = 输出首址。</dd>
+      <dt>内存布局</dt>
+      <dd>保护区(256B) | 工作区(1024B) | 保护区(256B) | 输出区(64B) | 保护区(256B)。
+        任一保护区被写坏即判越界失败。</dd>
+      <dt>栈指针</dt>
+      <dd>调用前 sp 已指向工作区顶端，栈可向下正常使用。</dd>
+      <dt>指令集</dt>
+      <dd>固定 <span class="mono">-march=rv32im</span>（无压缩扩展、无浮点/原子指令），
+        关闭链接松弛。</dd>
+      <dt>计分</dt>
+      <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>，逐点独立计分：做对的点得分 =
+        每点分值（{{ spec.points_per_case }} 分）× min(1, 基准指令数 ÷ 本队指令数)，
+        做错只丢该点的分。本题满分 {{ spec.full_score }}。</dd>
+      <dt>防作弊</dt>
+      <dd>每次评测的输入由平台随机生成，结果与平台独立算出的参考值比对，无法预先写死答案。</dd>
+    </dl>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -14,9 +14,13 @@ from models import db, Submission
 from standings import last_reset_utc
 
 
-def seed_demo_submissions():
-    """表为空时从 CSV 导入演示提交；返回导入条数。"""
-    if Submission.query.count() > 0:
+def seed_demo_submissions(force=False):
+    """表为空时从 CSV 导入演示提交；返回导入条数。
+
+    force=True 时忽略「表非空」判断，用于演示数据换代（题目集合变更后重建榜单）。
+    调用方需保证不会重复导入。
+    """
+    if not force and Submission.query.count() > 0:
         return 0
     if not os.path.exists(DEMO_SUBMISSIONS_CSV):
         return 0

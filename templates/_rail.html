@@ -18,13 +18,13 @@
   <div class="panel-head"><h2>评分口径</h2></div>
   <div class="panel-body">
     <ul class="kv">
-      <li><span class="k">正确性</span><span class="v">一票否决</span></li>
-      <li><span class="k">单题得分</span><span class="v">100 × 基准 ÷ 本队</span></li>
-      <li><span class="k">总分</span><span class="v">各题之和 · 满分 300</span></li>
-      <li><span class="k">超时判定</span><span class="v">＞ 10 × 基线</span></li>
+      <li><span class="k">数据点</span><span class="v">每题 10 个</span></li>
+      <li><span class="k">单点得分</span><span class="v">分值 × 基准 ÷ 本队</span></li>
+      <li><span class="k">三题分配</span><span class="v">30 / 30 / 40</span></li>
+      <li><span class="k">计分口径</span><span class="v">动态指令数</span></li>
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
-      基准取全场该题最快有效成绩，单题上限 100 分。详见
+      每个数据点独立判定与计分，做错只丢该点的分。基准为官方参考解的指令数。详见
       <a href="{{ url_for('help_page') }}">帮助</a>。
     </p>
   </div>

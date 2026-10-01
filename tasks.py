@@ -1,21 +1,65 @@
 import json
+import os
 import threading
 import queue
+from datetime import datetime, timedelta
+
 from models import db, Submission
 from evaluator import run_evaluation
 
 task_queue = queue.Queue()
-worker_thread = None
+worker_threads = []
 _app = None
 
 
 def start_worker(flask_app):
-    """启动后台 worker。传入 Flask app 以避免循环导入。"""
-    global _app, worker_thread
+    """启动后台 worker 池。传入 Flask app 以避免循环导入。
+
+    评测是 CPU 密集的（编译 + qemu + 单步计数），worker 数不宜超过 CPU 数；
+    SQLite 写又是串行的，所以默认取 min(2, cpu)。线程安全：多个 worker 共用
+    同一个 Queue；Flask-SQLAlchemy 的 session 按线程隔离，各自 with app_context。
+    """
+    global _app
     _app = flask_app
-    if worker_thread is None or not worker_thread.is_alive():
-        worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-        worker_thread.start()
+
+    count = flask_app.config.get('WORKER_COUNT') or min(2, os.cpu_count() or 1)
+    alive = [t for t in worker_threads if t.is_alive()]
+    for _ in range(max(0, count - len(alive))):
+        t = threading.Thread(target=_worker_loop, daemon=True)
+        t.start()
+        alive.append(t)
+    worker_threads[:] = alive
+
+
+def queue_depth():
+    """当前排队中的任务数，供限流判断。"""
+    return task_queue.qsize()
+
+
+def reap_stale_running(app, minutes=None):
+    """把卡在 running 的陈旧记录收尾，避免永久悬挂（worker 崩溃等情况）。
+
+    正常路径下 evaluator 用 try/finally 保证一定写回终态，这里只是兜底。
+    """
+    minutes = minutes or app.config.get('STALE_RUNNING_MINUTES', 15)
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    with app.app_context():
+        stale = Submission.query.filter(
+            Submission.status == 'running',
+            Submission.updated_at < cutoff,
+        ).all()
+        for sub in stale:
+            sub.status = 'failed'
+            sub.details = json.dumps({
+                'verdict': 'internal_error',
+                'error': 'internal_error',
+                'message': '评测异常中断，请重新提交',
+                'score': 0.0,
+            }, ensure_ascii=False)
+        if stale:
+            db.session.commit()
+            print(f'[reaper] 回收了 {len(stale)} 条卡在 running 的提交')
+    return len(stale)
 
 
 def _evaluate(submission_id):
@@ -45,8 +89,22 @@ def _worker_loop():
         try:
             with _app.app_context():
                 _evaluate(submission_id)
-        except Exception as e:
+        except Exception as e:                    # noqa: BLE001
             print(f"[worker] evaluation error for submission {submission_id}: {e}")
+            # 兜底：绝不让提交卡在 running（evaluator 已 try/finally，这里是双保险）
+            try:
+                with _app.app_context():
+                    sub = db.session.get(Submission, submission_id)
+                    if sub is not None and sub.status not in ('success', 'failed'):
+                        sub.status = 'failed'
+                        sub.score = 0.0
+                        sub.details = json.dumps({
+                            'verdict': 'internal_error', 'error': 'internal_error',
+                            'message': '评测异常中断，请重新提交', 'score': 0.0,
+                        }, ensure_ascii=False)
+                        db.session.commit()
+            except Exception as inner:            # noqa: BLE001
+                print(f"[worker] 无法写回提交 {submission_id}: {inner}")
         finally:
             task_queue.task_done()
 

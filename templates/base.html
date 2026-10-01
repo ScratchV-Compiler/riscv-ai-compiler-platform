@@ -110,7 +110,8 @@
                  {% if ep == 'standings_page' %}aria-current="page"{% endif %}>排行榜</a>
             </li>
             <li class="nav-item">
-              <span class="nav-link disabled" aria-disabled="true" title="提交功能在下一阶段上线">提交</span>
+              <a class="nav-link{% if ep == 'submit_page' %} active{% endif %}" href="{{ url_for('submit_page') }}"
+                 {% if ep == 'submit_page' %}aria-current="page"{% endif %}>提交</a>
             </li>
             <li class="nav-item">
               <a class="nav-link{% if ep in ('auth.team_page', 'auth.team_join_page') %} active{% endif %}" href="{{ url_for('auth.team_page') }}"

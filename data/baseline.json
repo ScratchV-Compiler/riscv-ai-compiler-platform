@@ -1,0 +1,35 @@
+{
+  "matmul-4x4": {
+    "baseline_instructions": 360,
+    "reference": "reference/matmul.s",
+    "measured_counts": [
+      360,
+      360,
+      360
+    ],
+    "march": "rv32im",
+    "no_relax": true
+  },
+  "add": {
+    "baseline_instructions": 536,
+    "reference": "reference/add.s",
+    "measured_counts": [
+      536,
+      536,
+      536
+    ],
+    "march": "rv32im",
+    "no_relax": true
+  },
+  "reducesum": {
+    "baseline_instructions": 344,
+    "reference": "reference/reducesum.s",
+    "measured_counts": [
+      344,
+      344,
+      344
+    ],
+    "march": "rv32im",
+    "no_relax": true
+  }
+}
