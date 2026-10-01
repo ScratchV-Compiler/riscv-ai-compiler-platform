@@ -22,6 +22,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import time
 
 from riscv_problems import layout
 
@@ -73,6 +74,35 @@ def make_work_dir(root=None, prefix='riscv_eval_'):
 
 def toolchain_ok():
     return all(toolchain_status().values())
+
+
+# 评测工作目录的命名前缀——清扫时只认这些，绝不误删别的目录
+WORK_PREFIXES = ('riscv_eval_', 'riscv_baseline_')
+
+
+def sweep_stale_workdirs(root, max_age_seconds=3600):
+    """删掉陈旧的评测工作目录；返回删掉的个数。
+
+    正常路径由 evaluator 的 `finally` 清理，但**进程被 kill 时 finally 不会执行**
+    （SIGKILL，或部署时的强制重启），目录就会残留。线上跑久了能累积到几百 MB。
+    所以启动时扫一遍，只删**我们自己前缀**且**足够旧**的目录——正在跑的评测
+    工作目录 mtime 很新，不会被误删。
+    """
+    if not root or not os.path.isdir(root):
+        return 0
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    for name in os.listdir(root):
+        if not name.startswith(WORK_PREFIXES):
+            continue
+        path = os.path.join(root, name)
+        try:
+            if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 # ---------------------------------------------------------------------------

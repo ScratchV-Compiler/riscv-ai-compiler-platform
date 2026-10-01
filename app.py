@@ -14,6 +14,7 @@ from riscv_problems import (get_eval_spec, EVAL_SPECS, case_elements,
                             case_label, case_purpose)
 from standings import build_standings, last_reset_utc
 from scoring import build_score_table, parse_details
+import riscv_runner
 from auth import (bp as auth_bp, csrf, current_user, login_required,
                   submit_wait_seconds, mark_submitted, format_wait)
 from seed import seed_demo_submissions
@@ -29,11 +30,15 @@ with app.app_context():
     db.create_all()
     _seeded = seed_demo_submissions()
     if _seeded:
-        print(f'[seed] 已从 data/demo_submissions.csv 导入 {_seeded} 条演示提交')
+        print(f'[seed] 已从 data/demo_submissions.csv 导入 {_seeded} 条演示提交', flush=True)
 
 # 启动后台 worker，并回收上次运行残留的卡死记录
 start_worker(app)
 reap_stale_running(app)
+# 清扫上次运行残留的评测工作目录（进程被 kill 时 finally 不会执行，会残留）
+_swept = riscv_runner.sweep_stale_workdirs(app.config['EVAL_WORK_ROOT'])
+if _swept:
+    print(f'[cleanup] 清理了 {_swept} 个陈旧的评测工作目录', flush=True)
 
 
 @app.context_processor
