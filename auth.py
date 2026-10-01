@@ -19,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect
 
 import mailer
 from models import (db, User, Team, TeamMember, Submission, PasswordReset,
-                    TEAM_MAX_SIZE)
+                    SubmitThrottle, TEAM_MAX_SIZE)
 from standings import last_reset_utc
 
 bp = Blueprint('auth', __name__)
@@ -119,6 +119,42 @@ def _record_reset_request(email):
         rec = {'count': 0, 'window_start': now}
         _reset_requests[key] = rec
     rec['count'] += 1
+
+
+# ---------------------------------------------------------------------------
+# 提交间隔限流（每选手两次成功提交之间至少间隔 N 秒）
+# ---------------------------------------------------------------------------
+
+def submit_wait_seconds(user):
+    """还需要等多少秒才能再次提交；0 表示可以提交。"""
+    rec = db.session.get(SubmitThrottle, user.id)
+    if rec is None:
+        return 0
+    interval = current_app.config['SUBMIT_INTERVAL_SECONDS']
+    elapsed = (datetime.utcnow() - rec.last_at).total_seconds()
+    remain = interval - elapsed
+    return int(remain) + 1 if remain > 0 else 0
+
+
+def mark_submitted(user):
+    """记录一次成功提交的时间。**只在提交成功时调用**——
+    传错文件、后缀不对这类无效提交不该消耗间隔。"""
+    now = datetime.utcnow()
+    rec = db.session.get(SubmitThrottle, user.id)
+    if rec is None:
+        db.session.add(SubmitThrottle(user_id=user.id, last_at=now))
+    else:
+        rec.last_at = now
+    db.session.commit()
+
+
+def format_wait(seconds):
+    """把等待秒数说成人话：90 → 「1 分 30 秒」。"""
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f'{seconds} 秒'
+    m, s = divmod(seconds, 60)
+    return f'{m} 分 {s} 秒' if s else f'{m} 分钟'
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +391,38 @@ def transfer_captain(user, target_user_id):
 # 序列化
 # ---------------------------------------------------------------------------
 
+_STATUS_LABEL = {
+    'pending': '排队中', 'running': '评测中',
+    'success': '已出分', 'failed': '未通过',
+}
+
+
+def submission_rows(subs):
+    """把提交整理成给「我的提交」表用的行（含可读状态与代价）。
+
+    代价取自 details 的逐数据点原始数据——这是选手看自己成绩的入口，
+    所以把评测指标一并带出来，不必点进结果页才知道。
+    """
+    from scoring import parse_details
+    rows = []
+    for s in subs:
+        d = parse_details(s)
+        costs = [c.get('cost') for c in (d or {}).get('cases', [])
+                 if isinstance(c, dict) and c.get('cost')]
+        rows.append({
+            'id': s.id,
+            'problem_id': s.problem_id,
+            'status': s.status,
+            'status_label': _STATUS_LABEL.get(s.status, s.status),
+            'score': s.score or 0.0,
+            'cost': min(costs) if costs else None,
+            'passed': (d or {}).get('passed_cases'),
+            'total': (d or {}).get('total_cases'),
+            'created_at': s.created_at,
+        })
+    return rows
+
+
 def team_payload(team, with_members=False):
     if team is None:
         return None
@@ -488,7 +556,7 @@ def team_page():
         my_subs = (Submission.query
                    .filter_by(team_name=team.name)
                    .order_by(Submission.created_at.desc())
-                   .limit(20).all())
+                   .limit(20).all())   # 经 submission_rows() 整理后再传给模板
         used = Submission.query.filter(
             Submission.team_name == team.name, Submission.created_at >= since
         ).count()
@@ -496,7 +564,7 @@ def team_page():
         'team.html', user=user, team=team,
         members=[m.user for m in team.members] if team else [],
         quota={'used': used, 'limit': current_app.config['DAILY_QUOTA']},
-        submissions=my_subs,
+        submissions=submission_rows(my_subs),
     )
 
 

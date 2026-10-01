@@ -56,12 +56,21 @@ class Config:
     MAIL_FROM = os.environ.get('MAIL_FROM') or 'no-reply@riscv-contest.local'
 
     # ---- P3 RISC-V 评测 ----
+    # 评测指标：cost = 动态指令数 + MISS_PENALTY × L1 未命中次数
+    # α=15 的来历（见 docs/08 §9）：顺序 RISC-V 核（E76/U74/Rocket）L1 命中 2 拍、
+    # 未命中约 15~20 拍且**不重叠**（只有一个填充槽）；本平台 kernel 实测 IPC≈0.75，
+    # 换算成指令当量 α ≈ 0.75 × 20 ≈ 15。**发布后不得更改**，否则历史成绩失去可比性。
+    MISS_PENALTY = int(os.environ.get('PLATFORM_MISS_PENALTY') or 15)
+
     COMPILE_TIMEOUT = 60          # 汇编+链接超时（秒）
     PER_CASE_TIMEOUT = 15         # 单个用例 qemu 执行超时
     COUNT_TIMEOUT = 60            # 单步数指令超时（单步本身很慢）
     EVAL_TOTAL_BUDGET = 180       # 一次评测总预算，超了判 timeout
     SUBMISSION_MAX_BYTES = 256 * 1024   # 提交源码大小上限
     MAX_QUEUE_DEPTH = 50          # 评测队列深度上限，超了 /api/submit 返回 429
+    # 提交间隔限流：同一选手两次**成功**提交之间至少间隔这么久（秒）。
+    # 只对成功提交计时——传错文件、后缀不对等无效提交不消耗间隔。
+    SUBMIT_INTERVAL_SECONDS = int(os.environ.get('PLATFORM_SUBMIT_INTERVAL') or 120)
     WORKER_COUNT = 0              # 0 = 自动（min(2, cpu)）
     STALE_RUNNING_MINUTES = 15    # 卡在 running 超过这么久就回收为失败
 

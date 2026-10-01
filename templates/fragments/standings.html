@@ -4,15 +4,21 @@
   <table class="table table-standings">
     <caption class="visually-hidden">
       榜单{% if standings.single %}（仅统计 {{ standings.single }}）{% endif %}：
-      排名、队伍、{{ standings.total_label }}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
+      排名、队伍、{{ standings.total_label }}{% if standings.size_columns %}、各数据点代价{% endif %}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
     </caption>
     <thead>
       <tr>
         <th scope="col" aria-label="排名">#</th>
         <th scope="col">队伍</th>
         <th scope="col" class="text-end">{{ standings.total_label }}</th>
+        {% if standings.size_columns %}
+        {# 单题视图：把该题的每个数据点铺成一列，能看出「哪个规模崩了」 #}
+        {% for n, label in standings.size_columns %}
+        <th scope="col" class="text-end" title="数据点 {{ loop.index }}（{{ label }}）的评测代价">{{ label }}</th>
+        {% endfor %}
+        {% endif %}
         {% for pid in standings.columns %}
-        <th scope="col" class="text-end">{{ pid }}</th>
+        <th scope="col" class="text-end">{{ standings.column_labels.get(pid, pid) }}</th>
         {% endfor %}
         <th scope="col" class="text-end">提交</th>
         <th scope="col">最后提交</th>
@@ -24,8 +30,19 @@
         <td class="rank{% if row.rank <= 3 %} top{% endif %}">{{ row.rank }}</td>
         <td class="team">{{ row.team }}</td>
         <td class="n total">{{ '%.2f'|format(row.total) }}</td>
+        {% if standings.size_columns %}
+        {% for n, label in standings.size_columns %}
+        {% set cost = row.by_cost[n] %}
+        {% set is_best = cost is not none and cost == standings.best_by_size.get(n) %}
+        <td class="n{% if is_best %} cell-best{% endif %}{% if cost is none %} text-body-secondary{% endif %}"
+            {% if is_best %}title="该数据点代价最小（{{ label }}）"{% endif %}>{{ cost if cost is not none else '—' }}</td>
+        {% endfor %}
+        {% endif %}
         {% for pid in standings.columns %}
-        <td class="n{% if row.scores[pid] == 0 %} score-0{% endif %}">{{ '%.2f'|format(row.scores[pid]) }}</td>
+        {% set sc = row.scores[pid] %}
+        {% set is_best = sc > 0 and sc == standings.best_by_problem.get(pid) %}
+        <td class="n{% if is_best %} cell-best{% endif %}{% if sc == 0 %} score-0{% endif %}"
+            {% if is_best %}title="{{ standings.column_labels.get(pid, pid) }} 榜首（{{ '%.2f'|format(sc) }} 分）"{% endif %}>{{ '%.2f'|format(sc) }}</td>
         {% endfor %}
         <td class="n">{{ row.count }}</td>
         <td class="n text-body-secondary">{{ row.last_str }}</td>

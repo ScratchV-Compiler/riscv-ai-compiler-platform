@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <h1>帮助</h1>
-  <p class="lede">赛制、计分口径、提交流程与常见报错排查。先看这里，再进群提问。</p>
+  <p class="lede">赛制、评测指标、计分口径、提交流程与常见报错排查。先看这里，再进群提问。</p>
 </div>
 
 <div class="notice notice-info mb-3" role="status">
@@ -45,6 +45,16 @@
   <div class="panel-head"><h2 id="faqSubmit">提交与配额</h2></div>
   <div class="panel-body">
     <details class="faq">
+      <summary>可以提交什么？怎么提交？</summary>
+      <div class="faq-body">
+        <p>提交 <span class="mono">.s</span> 源码（RV32IM 汇编），两种方式二选一：
+          在提交页<b>上传文件</b>，或直接<b>粘贴代码</b>。两者同时给出时以上传的文件为准。</p>
+        <p>源码须定义全局符号 <span class="mono">cnn_entry</span>；
+          不允许使用 <span class="mono">.incbin</span> / <span class="mono">.include</span>
+          （单文件提交不需要读外部文件）。</p>
+      </div>
+    </details>
+    <details class="faq">
       <summary>每天能提交多少次？什么时候重置？</summary>
       <div class="faq-body">
         <p>每队每天最多提交 99 次，配额在每日 05:00（UTC+8）随榜单结算一起重置。计分取当日最优，多提交不会覆盖更好的成绩。</p>
@@ -59,32 +69,89 @@
   </div>
 </section>
 
+<section class="panel" aria-labelledby="faqRun">
+  <div class="panel-head"><h2 id="faqRun">运行约定（选手必读）</h2></div>
+  <div class="panel-body">
+    <dl class="spec">
+      <dt>入口与入参</dt>
+      <dd>定义全局符号 <span class="mono">cnn_entry</span>；入参
+        <span class="mono">a0</span> = 输入首址、
+        <span class="mono">a1</span> = 输出首址、
+        <strong><span class="mono">a2</span> = 规模 N</strong>
+        （matmul 是矩阵阶数，add / reducesum 是向量长度）。</dd>
+      <dt>数据格式</dt>
+      <dd>int32、<strong>Q16.16 定点</strong>，取值落在 [-32768, 32767]（即 [-0.5, 0.5)），
+        单次乘法/相加不会溢出 int32。</dd>
+      <dt>内存布局</dt>
+      <dd>保护区(256B) | 工作区 | 保护区(256B) | 输出区 | 保护区(256B)。
+        <strong>工作区与输出区的大小随 N 变化</strong>，按 <span class="mono">a2</span> 算，
+        不要写死常量。任一保护区被写坏即判越界失败。</dd>
+      <dt>栈</dt>
+      <dd>调用前 <span class="mono">sp</span> 已指向工作区顶端，可向下正常使用。</dd>
+      <dt>指令集</dt>
+      <dd>固定 <span class="mono">-march=rv32im</span>——<strong>无压缩扩展</strong>
+        （<span class="mono">c.*</span>）、无浮点、无原子指令，关闭链接松弛。</dd>
+    </dl>
+  </div>
+</section>
+
 <section class="panel" aria-labelledby="faqScore">
-  <div class="panel-head"><h2 id="faqScore">计分口径</h2></div>
+  <div class="panel-head"><h2 id="faqScore">评测指标与计分口径</h2></div>
   <div class="panel-body">
     <details class="faq">
-      <summary>得分怎么算？为什么可能超过不了 100？</summary>
+      <summary>数据点是怎么划分的？</summary>
+      <div class="faq-body">
+        <p>每题 <strong>10 个数据点，规模逐点递增</strong>——不是同一份数据跑十遍：</p>
+        <ul>
+          <li><span class="mono">add</span> / <span class="mono">reducesum</span>：N = 64, 128, …, 4096</li>
+          <li><span class="mono">matmul</span>：4×4, 8×8, …, 64×64</li>
+        </ul>
+        <p>由小到大覆盖「基本正确性 → 循环开销 → 访存瓶颈」。完整表格见
+          <a href="{{ url_for('problems_page') }}">赛题页</a>。</p>
+      </div>
+    </details>
+    <details class="faq">
+      <summary>得分怎么算？</summary>
       <div class="faq-body">
         <dl class="spec">
+          <dt>评测指标</dt>
+          <dd><span class="mono">代价 = 动态指令数 + 15 × L1 未命中次数</span>。
+            未命中按顺序核的实际代价折算：L1 命中 2 拍、未命中约 15~20 拍且互不重叠
+            （该核只有一个填充槽），结合实测 IPC≈0.75，取 α = 15。</dd>
           <dt>数据点与分值</dt>
-          <dd>每题 <strong>10 个数据点</strong>，每个数据点独立判定、独立给分。
-            <span class="mono">add</span> 与 <span class="mono">matmul-4x4</span> 每点 3 分（各 30 分），
+          <dd>每题 10 个数据点，每个独立判定、独立给分。
+            <span class="mono">add</span> 与 <span class="mono">matmul</span> 每点 3 分（各 30 分），
             <span class="mono">reducesum</span> 每点 4 分（40 分），三题合计 <strong>100 分</strong>。</dd>
           <dt>单点得分</dt>
-          <dd>做对的数据点得分 = 分值 × min(1, 基准指令数 ÷ 本队指令数)。
-            基准是官方参考解的动态指令数；比基准多用多少指令，就按比例扣多少。</dd>
+          <dd>做对的点得分 = 分值 × min(1, <strong>该点全场最优代价</strong> ÷ 本队该点代价)。
+            基准取<strong>全场最优</strong>（对齐官方策划案「以最优成绩为基准」），
+            所以分数会随其他队伍的成绩浮动——别人变快，你的分会被压低，这是设计如此。</dd>
           <dt>做错了会怎样</dt>
           <dd>只丢那一个数据点的分，其余数据点照常评测——不会因为一个点错就整题归零。
             唯一的整题级失败是<strong>编译不通过</strong>。</dd>
-          <dt>满分取用</dt>
-          <dd>三题满分 100。同一队同一天内取当日最高分。</dd>
+          <dt>怎么看榜</dt>
+          <dd>排行榜上点某一题，会把该题的 10 个数据点铺成 10 列。
+            <strong>合计分会把「哪个规模崩了」抹掉</strong>，逐点视图能直接看出来——
+            例如总分第一的队可能在所有大规模数据点上都被反超。</dd>
         </dl>
+      </div>
+    </details>
+    <details class="faq">
+      <summary>为什么我的代码小规模能过、大规模就挂了？</summary>
+      <div class="faq-body">
+        <p>最常见的原因是<strong>把规模写死了</strong>。平台通过
+          <span class="mono">a2</span> 传入当前数据点的规模 N，10 个数据点的 N 各不相同。
+          如果代码里用了固定常量（例如只处理 4×4）而没读 <span class="mono">a2</span>，
+          就只能在 N 恰好匹配的那个点上通过，其余 9 个全部失败。</p>
+        <p>注意这里有个取舍：<strong>针对单一规模做特化往往在那个点上更快</strong>
+          （编译器能把循环完全展开），但代价是其他规模归零。
+          规模分级的数据点正是为了考察「可扩展性」。</p>
       </div>
     </details>
     <details class="faq">
       <summary>超时是怎么判的？</summary>
       <div class="faq-body">
-        <p>单个数据点执行超过时限（或指令数超出上限）时该点得 0 分，其余数据点仍会继续评测。
+        <p>单个数据点执行超过时限（或代价超出上限）时该点得 0 分，其余数据点仍会继续评测。
           请优先保证跑通，再谈优化。</p>
       </div>
     </details>
@@ -96,22 +163,27 @@
   <div class="panel-body">
     <dl class="spec">
       <dt>编译失败</dt>
-      <dd>多为汇编语法错误或**未定义全局符号 <span class="mono">cnn_entry</span>**。
+      <dd>多为汇编语法错误，或未定义全局符号 <span class="mono">cnn_entry</span>。
         结果页会给出编译器的前几行报错，按行号回去改。</dd>
       <dt>结果不正确</dt>
-      <dd>输出与参考不符时，结果页会指出第几个数值不对（期望 / 实际）。
-        常见原因：行列主序搞反、忘了 <span class="mono">srai 16</span>、把累加写进了错误的输出位置。</dd>
+      <dd>输出与参考不符时，结果页会指出第几个数值不对（期望 / 实际）与对应的数据点规模。
+        常见原因：行列主序搞反、忘了 <span class="mono">srai 16</span>、
+        把累加写进了错误的输出位置、<strong>没有按 a2 处理当前规模</strong>。</dd>
       <dt>越界写</dt>
-      <dd>写坏了内存保护区。检查是否写到了 <span class="mono">a1</span> 指向的 64 字节之外，
-        或栈向下溢出工作区。</dd>
+      <dd>写坏了内存保护区。输出区大小随 <span class="mono">a2</span> 变化，
+        检查是否写到了 <span class="mono">a1 + 输出元素数×4</span> 之外；
+        也要注意栈向下溢出工作区。</dd>
       <dt>运行错误（段错误 / 非法指令）</dt>
-      <dd>多半是非法访存或用了 RV32IM 不支持的指令（如压缩指令 <span class="mono">c.*</span>、
+      <dd>多半是非法访存，或用了 RV32IM 不支持的指令（如压缩指令 <span class="mono">c.*</span>、
         浮点 / 原子指令）。本项目固定 <span class="mono">-march=rv32im</span>。</dd>
       <dt>超时</dt>
-      <dd>存在死循环，或指令数远超基准。先把循环边界检查清楚。</dd>
+      <dd>存在死循环，或代价远超基准。先把循环边界检查清楚——
+        尤其注意规模变大后，循环次数是按 N 增长的。</dd>
       <dt>得分远低于预期</dt>
-      <dd>确认提交的是最终版本；另外注意计分看的是**动态指令数**，
-        少写几行代码不等于指令数少（循环会重复计数）。</dd>
+      <dd>三项依次检查：① 是否提交了最终版本；② 指标是
+        <strong>代价 = 指令数 + 15×L1 未命中</strong>，少写几行代码不等于代价低，
+        访存模式差（随机访问、反复扫大数组）会显著抬高代价；
+        ③ 逐点看榜单，确认是「全面偏慢」还是「某个规模崩了」。</dd>
     </dl>
   </div>
 </section>
@@ -121,6 +193,7 @@
   <div class="panel-body">
     <ul class="mb-0">
       <li>禁止队伍之间以任何形式共享核心实现代码，异常高相似度会进入人工审查。</li>
+      <li>每次评测的输入由平台随机生成，参考输出在平台侧独立计算，<strong>预先写死答案无法通过</strong>。</li>
       <li>Stage 2 现场封闭环境，禁止联网搜索、访问外网与使用即时通讯工具。</li>
       <li>参赛作品知识产权归参赛队伍所有；组委会有权对获奖作品做非商业性展示。</li>
     </ul>

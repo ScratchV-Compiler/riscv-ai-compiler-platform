@@ -10,7 +10,7 @@ TEAM_MAX_SIZE = 3  # 每队人数上限（策划案：每队 1~3 人）
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     team_name = db.Column(db.String(80), nullable=False)
-    problem_id = db.Column(db.String(20), nullable=False)  # 如 'matmul-4x4'
+    problem_id = db.Column(db.String(20), nullable=False)  # 如 'matmul'
     code_path = db.Column(db.String(200), nullable=False)   # 存储源码路径
     status = db.Column(db.String(20), default='pending')    # pending, running, success, failed
     score = db.Column(db.Float, default=0.0)
@@ -89,6 +89,18 @@ class PasswordReset(db.Model):
     request_ip = db.Column(db.String(45), nullable=True)
 
     user = db.relationship('User', backref='password_resets')
+
+
+class SubmitThrottle(db.Model):
+    """提交间隔限流：记录每个选手最近一次**成功**提交的时间。
+
+    刻意做成独立的表而不是给 Submission 加列——`create_all()` 只创建缺失的表、
+    不会 ALTER 既有表，所以加列在老库上会静默失效（见 docs/08 的说明）。
+    """
+    __tablename__ = 'submit_throttle'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    last_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Team(db.Model):

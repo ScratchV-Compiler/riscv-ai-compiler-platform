@@ -27,15 +27,47 @@
     <pre class="formula" aria-label="示例"><code>{{ p.formula }}</code></pre>
 
     {% set spec = eval_spec(p.id) %}
+    {% if spec %}
+    {# 数据点表：按规模分级，逐点列出规模/元素数/分值/考察点 #}
+    <h3 class="h6 mt-4 mb-2">数据点（{{ spec.case_count }} 个 · 共 {{ spec.full_score }} 分）</h3>
+    <div class="table-scroll">
+      <table class="table table-standings align-middle">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">规模</th>
+            <th scope="col" class="text-end">输入</th>
+            <th scope="col" class="text-end">输出</th>
+            <th scope="col" class="text-end">分值</th>
+            <th scope="col">考察点</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(spec.case_count) %}
+          {% set n = spec.data_point_sizes[i] %}
+          {% set e = case_elements(spec, n) %}
+          <tr>
+            <td class="n">{{ i + 1 }}</td>
+            <td class="n">{{ case_label(spec, i) }}</td>
+            <td class="n">{{ e[0] }}</td>
+            <td class="n">{{ e[1] }}</td>
+            <td class="n">{{ spec.points_per_case }}</td>
+            <td class="small text-body-secondary">{{ case_purpose(spec, i) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint mb-0">
+      规模通过 <span class="mono">a2</span> 传入（{{ spec.param_meaning }}）——
+      选手须写<strong>尺寸无关</strong>的代码。每个数据点独立判定与计分，做错只丢该点的分。
+    </p>
+    {% endif %}
+
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
       {% if p.submittable %}
       <a class="btn btn-brand btn-sm" href="{{ url_for('submit_page', problem=p.id) }}">去提交</a>
       <span class="small text-body-secondary">已开放评测</span>
-      {% if spec %}
-      <span class="vbadge vbadge-pending">
-        {{ spec.case_count }} 个数据点 · 每点 {{ spec.points_per_case }} 分 · 满分 {{ spec.full_score }}
-      </span>
-      {% endif %}
       {% else %}
       <span class="vbadge vbadge-pending">暂未开放提交</span>
       <span class="small text-body-secondary">仅展示题面</span>

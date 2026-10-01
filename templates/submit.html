@@ -27,7 +27,7 @@
   <h1>提交代码</h1>
   <p class="lede">
     提交 {{ suffix }} 源码，平台会用 clang 汇编链接后在 qemu-riscv32 上真实执行，
-    先判正确性，通过后按动态指令数计分。可以上传文件，也可以直接粘贴。
+    先判正确性，通过后按代价（指令数 + 访存）计分。可以上传文件，也可以直接粘贴。
   </p>
 </div>
 
@@ -61,6 +61,16 @@
     {% endfor %}
   </span>
 </div>
+
+{% if wait_seconds %}
+{# 距上次成功提交不足间隔：提前告知并倒计时，免得点了才被拒 #}
+<div class="notice notice-warn mb-3" role="status" id="waitNotice">
+  <div>
+    距上次成功提交不足 {{ interval // 60 }} 分钟，还需等待
+    <strong class="mono" id="waitCountdown">{{ wait_seconds }}</strong> 秒后才能再次提交。
+  </div>
+</div>
+{% endif %}
 
 <section class="panel auth-panel">
   <div class="panel-head">
@@ -103,7 +113,8 @@ cnn_entry:
       </div>
 
       <div class="d-flex flex-wrap align-items-center gap-2">
-        <button class="btn btn-brand" type="submit">提交评测</button>
+        <button class="btn btn-brand" type="submit" id="submitBtn"
+                {% if wait_seconds %}disabled{% endif %}>提交评测</button>
         <span class="small">
           以队伍「{{ team.name }}」提交 · 今日已用 {{ quota.used }}/{{ quota.limit }} 次
         </span>
@@ -118,23 +129,96 @@ cnn_entry:
     <dl class="spec">
       <dt>入口符号</dt>
       <dd>必须定义全局符号 <span class="mono">{{ entry_symbol }}</span>，入参
-        a0 = 输入首址、a1 = 输出首址。</dd>
+        a0 = 输入首址、a1 = 输出首址、<strong>a2 = 规模 N</strong>
+        （{{ spec.param_meaning }}）。<strong>必须写尺寸无关的代码</strong>——
+        10 个数据点的规模各不相同。</dd>
       <dt>内存布局</dt>
-      <dd>保护区(256B) | 工作区(1024B) | 保护区(256B) | 输出区(64B) | 保护区(256B)。
+      <dd>保护区(256B) | 工作区 | 保护区(256B) | 输出区 | 保护区(256B)。
+        工作区与输出区的大小随 <span class="mono">a2</span> 变化。
         任一保护区被写坏即判越界失败。</dd>
+      <dt>越界与规模</dt>
+      <dd>输出区大小 = {{ spec.note }}。规模越大，工作区与输出区越大——
+        按 <span class="mono">a2</span> 算，不要写死常量。</dd>
       <dt>栈指针</dt>
       <dd>调用前 sp 已指向工作区顶端，栈可向下正常使用。</dd>
       <dt>指令集</dt>
       <dd>固定 <span class="mono">-march=rv32im</span>（无压缩扩展、无浮点/原子指令），
         关闭链接松弛。</dd>
+      <dt>评测指标</dt>
+      <dd><span class="mono">代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中次数</span>。
+        未命中按目标顺序核的实际情况折算：L1 命中 2 拍、未命中约 15~20 拍且不重叠
+        （该核只有一个填充槽），结合实测 IPC≈0.75，取 α={{ config.MISS_PENALTY }}。</dd>
       <dt>计分</dt>
-      <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>，逐点独立计分：做对的点得分 =
-        每点分值（{{ spec.points_per_case }} 分）× min(1, 基准指令数 ÷ 本队指令数)，
-        做错只丢该点的分。本题满分 {{ spec.full_score }}。</dd>
+      <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>（规模逐点递增，见赛题页表格），
+        逐点独立计分：做对的点得分 = 每点分值（{{ spec.points_per_case }} 分）×
+        min(1, <strong>该点</strong>基准代价 ÷ 本队该点代价)，做错只丢该点的分。
+        本题满分 {{ spec.full_score }}。</dd>
       <dt>防作弊</dt>
       <dd>每次评测的输入由平台随机生成，结果与平台独立算出的参考值比对，无法预先写死答案。</dd>
     </dl>
   </div>
 </section>
+{% endif %}
+
+{# 被限流跳回时弹提示框；同时把倒计时跑起来 #}
+{% if rate_limited %}
+<div class="modal fade" id="rateModal" tabindex="-1" aria-labelledby="rateModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rateModalLabel">提交过于频繁</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">
+          每位选手两次成功提交之间需间隔 {{ interval // 60 }} 分钟。
+          请等待 <strong class="mono" id="modalCountdown">{{ wait_seconds }}</strong> 秒后再试。
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-brand" data-bs-dismiss="modal">知道了</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if wait_seconds %}
+<script>
+  (function () {
+    var left = {{ wait_seconds }};
+    var btn = document.getElementById('submitBtn');
+    var cd = document.getElementById('waitCountdown');
+    var mcd = document.getElementById('modalCountdown');
+    function fmt(s) {
+      if (s < 60) return s + ' 秒';
+      var m = Math.floor(s / 60), r = s % 60;
+      return r ? m + ' 分 ' + r + ' 秒' : m + ' 分钟';
+    }
+    function tick() {
+      if (cd) cd.textContent = fmt(left);
+      if (mcd) mcd.textContent = fmt(left);
+      if (left <= 0) {
+        if (btn) { btn.disabled = false; btn.textContent = '提交评测'; }
+        var n = document.getElementById('waitNotice');
+        if (n) n.remove();
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = '请等待 ' + fmt(left); }
+      left -= 1;
+      setTimeout(tick, 1000);
+    }
+    tick();
+  })();
+</script>
+{% endif %}
+
+{% if rate_limited %}
+<script>
+  (function () {
+    var el = document.getElementById('rateModal');
+    if (el && window.bootstrap) new bootstrap.Modal(el).show();
+  })();
+</script>
 {% endif %}
 {% endblock %}

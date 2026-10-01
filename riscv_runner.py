@@ -17,10 +17,12 @@ rlimit 用 `prlimit` 施加而不是 Python 的 `preexec_fn`：worker 是线程�
 """
 
 import os
+import re
 import shutil
 import struct
 import subprocess
 import tempfile
+import time
 
 from riscv_problems import layout
 
@@ -72,6 +74,35 @@ def make_work_dir(root=None, prefix='riscv_eval_'):
 
 def toolchain_ok():
     return all(toolchain_status().values())
+
+
+# 评测工作目录的命名前缀——清扫时只认这些，绝不误删别的目录
+WORK_PREFIXES = ('riscv_eval_', 'riscv_baseline_')
+
+
+def sweep_stale_workdirs(root, max_age_seconds=3600):
+    """删掉陈旧的评测工作目录；返回删掉的个数。
+
+    正常路径由 evaluator 的 `finally` 清理，但**进程被 kill 时 finally 不会执行**
+    （SIGKILL，或部署时的强制重启），目录就会残留。线上跑久了能累积到几百 MB。
+    所以启动时扫一遍，只删**我们自己前缀**且**足够旧**的目录——正在跑的评测
+    工作目录 mtime 很新，不会被误删。
+    """
+    if not root or not os.path.isdir(root):
+        return 0
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    for name in os.listdir(root):
+        if not name.startswith(WORK_PREFIXES):
+            continue
+        path = os.path.join(root, name)
+        try:
+            if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -137,24 +168,25 @@ def _run(cmd, profile, cfg, cwd, timeout, stdin=None):
 # wrapper 生成
 # ---------------------------------------------------------------------------
 
-def build_wrapper(spec, values, path):
+def build_wrapper(spec, values, n, path):
     """生成裸机 wrapper：布置内存、灌入随机输入、调用选手的 cnn_entry、dump 内存。
 
-    ABI 契约（与 ScratchV 同构，见 third_party/ScratchV/tests/test_standalone_execution.py）：
+    ABI 契约（在 ScratchV 的基础上**加了规模参数**，见 docs/08）：
     - 选手须定义全局符号 `cnn_entry`
-    - 入参 a0 = 输入张量首址，a1 = 输出张量首址
+    - 入参 a0 = 输入张量首址，a1 = 输出张量首址，**a2 = 规模 N**
+      （matmul 为矩阵阶数，add/reducesum 为向量长度）——选手必须写尺寸无关的代码
     - 输出为 int32 Q16.16
     - 内存布局 guard|workspace|guard|output|guard，guard 非零即越界写
     - sp 指向 workspace 顶端（栈向下长在 workspace 内）
     """
-    lay = layout(spec)
+    lay = layout(spec, n)
     total = lay['total']
-    guard = spec['guard_bytes']
-    ws = spec['workspace_bytes']
-    out_bytes = spec['output_elements'] * 4
+    guard = lay['guard_lo'][1]        # 保护区大小由 layout 决定，规格里不再重复存
+    ws = lay['workspace'][1]
+    out_bytes = lay['output'][1]
     words = ', '.join(str(int(v)) for v in values)
 
-    asm = f'''# 由平台生成，勿手改。对应 riscv_problems.layout()：
+    asm = f'''# 由平台生成，勿手改。对应 riscv_problems.layout(spec, N={n})：
 #   guard_lo({guard}) | workspace({ws}) | guard_mid({guard}) | output({out_bytes}) | guard_hi({guard})
 .option norvc
 .option norelax
@@ -165,6 +197,7 @@ _start:
     la   sp, __stack_top
     la   a0, input_tensor
     la   a1, output_tensor
+    li   a2, {n}
     call {spec['entry_symbol']}
     li   a0, 1
     la   a1, __dump_start
@@ -243,14 +276,89 @@ def run_elf(elf_path, cfg, cwd, timeout=None):
     return res.returncode, res.stdout or b'', _tail((res.stderr or b'').decode('utf-8', 'replace'), 4)
 
 
-def count_instructions(elf_path, cfg, cwd, trace_path):
-    """动态指令数 = 单步 trace 里 `^Trace` 的行数。
+# ---------------------------------------------------------------------------
+# QEMU 缓存插件：一次跑完同时给出指令数与 L1 访问/命中统计
+# ---------------------------------------------------------------------------
 
-    实测该计数精确（205 行 == 2 + 100*2 + 3 条指令）。
-    本机没有 qemu 插件库（无 libinsn.so），也没有 RISC-V 调度模型（llvm-mca 不支持），
-    这是唯一可用的确定性计数法。
-    返回 (count, truncated)。
+PLUGIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'tools', 'qemu_plugin')
+PLUGIN_SO = os.path.join(PLUGIN_DIR, 'cache.so')
+
+
+def plugin_available():
+    """插件是否已经构建好。没有就退回单步计数。"""
+    return os.path.exists(PLUGIN_SO)
+
+
+def stage_plugin(cwd):
+    """把插件复制进工作目录——沙箱用户进不了 /root，必须放它读得到的地方。"""
+    dst = os.path.join(cwd, 'cache.so')
+    if not os.path.exists(dst):
+        shutil.copyfile(PLUGIN_SO, dst)
+        os.chmod(dst, 0o755)
+    return dst
+
+
+def profile_elf(elf_path, cfg, cwd):
+    """跑一次插件，返回 {instructions, d_access, d_miss, i_miss, hitrate} 或 None。
+
+    比原来的单步计数快 100~300 倍（实测 matmul N=64：6.25s → 0.02s），
+    且计数**逐位一致**——30 个数据点全部与旧方法相同，baseline 无需重算。
     """
+    if not plugin_available():
+        return None
+    try:
+        so = stage_plugin(cwd)
+    except OSError:
+        return None
+    qemu = current_plugin_cfg()
+    spec = (f'{so},dsize={qemu["dsize"]},dways={qemu["dways"]},dblock={qemu["dblock"]}'
+            f',isize={qemu["isize"]},iways={qemu["iways"]},iblock={qemu["iblock"]}')
+    res = _run(['qemu-riscv32', '-d', 'plugin', '-plugin', spec, os.path.abspath(elf_path)],
+               'run', cfg, cwd, timeout=cfg['count_timeout'])
+    if isinstance(res, subprocess.TimeoutExpired):
+        return None
+    blob = (res.stderr or b'') + (res.stdout or b'')
+    m = re.search(rb'instructions=(\d+) d_access=(\d+) d_miss=(\d+) d_hitrate=([\d.]+) '
+                  rb'i_access=(\d+) i_miss=(\d+)', blob)
+    if not m:
+        return None
+    return {
+        'instructions': int(m.group(1)),
+        'd_access': int(m.group(2)),
+        'd_miss': int(m.group(3)),
+        'd_hitrate': float(m.group(4)),
+        'i_access': int(m.group(5)),
+        'i_miss': int(m.group(6)),
+    }
+
+
+def take_cache_stats(cfg):
+    """取出并清空累计的缓存统计（每次 profile_elf 追加一条）。"""
+    return cfg.pop('_cache_stats', [])
+
+
+def current_plugin_cfg():
+    """缓存参数。从 config 读，拿不到就用默认 L1。"""
+    return {
+        'dsize': 32768, 'dways': 4, 'dblock': 64,
+        'isize': 32768, 'iways': 4, 'iblock': 64,
+    }
+
+
+def count_instructions(elf_path, cfg, cwd, trace_path=None):
+    """动态指令数。优先用插件（快 300× 且数字一致），退回单步计数。
+
+    返回 (count, truncated)。truncated 只在单步路径下可能为真。
+    """
+    prof = profile_elf(elf_path, cfg, cwd)
+    if prof is not None:
+        cfg.setdefault('_cache_stats', []).append(prof)
+        return prof['instructions'], False
+
+    # ---- 退回：单步 trace 数 `^Trace` 行数 ----
+    if trace_path is None:
+        trace_path = os.path.join(cwd, 'trace.log')
     res = _run(['qemu-riscv32', '-singlestep', '-d', 'exec',
                 '-D', os.path.abspath(trace_path), os.path.abspath(elf_path)],
                'count', cfg, cwd, timeout=cfg['count_timeout'])
@@ -267,12 +375,12 @@ def count_instructions(elf_path, cfg, cwd, trace_path):
     return count, truncated
 
 
-def parse_dump(data, spec):
+def parse_dump(data, spec, n):
     """解析内存 dump。返回 (values, guard_ok, message)。
 
     message 只说明「哪一段 guard 被破坏」，**不含任何原始字节**（防外带，见 docs/08）。
     """
-    lay = layout(spec)
+    lay = layout(spec, n)
     if len(data) != lay['total']:
         return None, False, f'内存 dump 长度不符：期望 {lay["total"]} 字节，实际 {len(data)}'
 
@@ -283,8 +391,7 @@ def parse_dump(data, spec):
             return None, False, f'越界写：{label}的保护区被破坏'
 
     off, size = lay['output']
-    n = spec['output_elements']
-    values = list(struct.unpack(f'<{n}i', data[off:off + size]))
+    values = list(struct.unpack(f'<{size // 4}i', data[off:off + size]))
     return values, True, ''
 
 

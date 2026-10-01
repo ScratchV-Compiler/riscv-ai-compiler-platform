@@ -6,7 +6,7 @@
   <span class="chip"><span class="dot" aria-hidden="true"></span>Stage 1 线上赛 · 进行中</span>
   <h1>RISC-V AI 编译器挑战赛</h1>
   <p class="lede">
-    提交手写的 RISC-V 汇编，平台在 qemu 上真实执行，按正确性与动态指令数计分。
+    提交手写的 RISC-V 汇编，平台在 qemu 上真实执行，按正确性与代价（指令数 + 访存）计分。
   </p>
   <div class="hero-cta">
     <a class="btn btn-brand" href="{{ url_for('standings_page') }}">查看排行榜</a>
@@ -29,8 +29,12 @@
           <span class="prob-sum d-block">{{ p.summary }}</span>
         </span>
         <span class="prob-side">
+          {% set spec = eval_spec(p.id) %}
           <span class="badge-id">{{ p.id }}</span>
-          <span class="text-body-secondary small">满分 100</span>
+          {# 每题满分各不相同（30/30/40）；100 是三题**合计**，不能写在这里 #}
+          <span class="text-body-secondary small">
+            {%- if spec %}满分 {{ spec.full_score }}{% endif -%}
+          </span>
         </span>
       </a>
     </li>

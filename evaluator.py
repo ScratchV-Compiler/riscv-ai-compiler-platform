@@ -37,7 +37,7 @@ from flask import current_app
 
 import riscv_oracle
 import riscv_runner
-from riscv_problems import get_eval_spec
+from riscv_problems import get_eval_spec, case_size
 
 # 选手源码里禁止出现的汇编指示符：它们能在**汇编阶段**读宿主任意可读文件
 # （.incbin "/etc/passwd"），把编译期变成读取通道。单文件提交用不到它们。
@@ -81,7 +81,7 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
     budget = current_app.config['EVAL_TOTAL_BUDGET']
     cfg = _runner_cfg()
     per_case = spec['points_per_case']
-    baseline = _load_baseline(spec, problem)
+    spec.setdefault('_baselines', _load_baseline(spec, problem))   # {N: 指令数}
 
     work = riscv_runner.make_work_dir(current_app.config['EVAL_WORK_ROOT'])
     try:
@@ -96,9 +96,10 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
         earned = 0.0
 
         for idx in range(spec['case_count']):
-            case = {'case': idx, 'seed': None, 'verdict': None, 'points': 0.0,
-                    'points_max': per_case, 'instructions': None,
-                    'baseline': baseline, 'ratio': None, 'detail': ''}
+            case = {'case': idx, 'seed': None, 'size': None, 'verdict': None,
+                    'points': 0.0, 'points_max': per_case, 'instructions': None,
+                    'cost': None, 'd_miss': None, 'd_access': None, 'd_hitrate': None,
+                    'baseline': None, 'ratio': None, 'detail': ''}
             cases.append(case)
 
             # 预算兜底：超了就停止评测，**已挣到的分保留**（逐点语义），
@@ -109,11 +110,14 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
 
             case_seed = rng.randrange(2 ** 31)
             case['seed'] = case_seed
+            n = case_size(spec, idx)
+            case['size'] = n
+            case['baseline'] = _baseline_for(spec, problem, n)
 
-            values = riscv_oracle.make_input(case_seed, spec)
-            expected = riscv_oracle.reference(values, spec)
+            values = riscv_oracle.make_input(case_seed, spec, n)
+            expected = riscv_oracle.reference(values, spec, n)
             wrapper = riscv_runner.build_wrapper(
-                spec, values, os.path.join(work, f'wrapper_{idx}.s'))
+                spec, values, n, os.path.join(work, f'wrapper_{idx}.s'))
             elf = os.path.join(work, f'execute_{idx}.elf')
 
             ok, cerr = riscv_runner.compile_elf(wrapper, player, elf, cfg, work)
@@ -122,26 +126,29 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='compile_error', detail=cerr)
                 return 0.0, _details('compile_error', f'编译失败：{cerr}',
                                      error='compile_error', problem=problem,
-                                     baseline_instructions=baseline, cases=cases,
-                                     full_score=spec['full_score'])
+                                     cases=cases, full_score=spec['full_score'])
 
             rc, out, _serr = riscv_runner.run_elf(elf, cfg, work)
             if rc is None:
                 case.update(verdict='timeout', detail='运行超时')
                 continue
             if rc < 0:
-                case.update(verdict='runtime_error', detail=_signal_message(rc))
+                # SIGXCPU（-24）是"超出 CPU 限额"，语义上就是超时——
+                # 否则墙钟超时与 CPU 限额哪个先生效，会决定它被判成
+                # timeout 还是 runtime_error，不稳定。
+                v = 'timeout' if rc == -24 else 'runtime_error'
+                case.update(verdict=v, detail=_signal_message(rc))
                 continue
             if rc != 0:
                 case.update(verdict='runtime_error', detail=f'退出码 {rc}')
                 continue
 
-            got, guard_ok, gmsg = riscv_runner.parse_dump(out, spec)
+            got, guard_ok, gmsg = riscv_runner.parse_dump(out, spec, n)
             if not guard_ok:
                 case.update(verdict='invalid', detail=gmsg)
                 continue
 
-            match, mmsg = riscv_oracle.check_output(got, expected, spec)
+            match, mmsg = riscv_oracle.check_output(got, expected, spec, n)
             if not match:
                 case.update(verdict='invalid', detail=mmsg)
                 continue
@@ -151,7 +158,9 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='skipped', detail='评测总时长超出预算，该数据点未数指令')
                 continue
             trace = os.path.join(work, f'trace_{idx}.log')
+            cfg.pop('_cache_stats', None)          # 清掉上一轮的
             count, truncated = riscv_runner.count_instructions(elf, cfg, work, trace)
+            stats = riscv_runner.take_cache_stats(cfg)
             if truncated:
                 case.update(verdict='timeout', detail='指令数超出上限')
                 continue
@@ -159,16 +168,24 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='runtime_error', detail='指令计数失败')
                 continue
 
-            ratio = _ratio(baseline, count)
+            # 评测指标：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）
+            penalty = current_app.config['MISS_PENALTY']
+            c0 = stats[-1] if stats else None
+            n_miss = ((c0['d_miss'] + c0['i_miss']) if c0 else 0)
+            cost = count + penalty * n_miss
+            ratio = _ratio(case['baseline'], cost)
             pts = round(per_case * ratio, 3)
             earned += pts
-            case.update(verdict='accepted', instructions=count, ratio=ratio,
-                        points=pts)
+            case.update(verdict='accepted', instructions=count, cost=cost,
+                        ratio=ratio, points=pts)
+            if c0:
+                case['d_miss'] = c0['d_miss']
+                case['d_access'] = c0['d_access']
+                case['d_hitrate'] = c0['d_hitrate']
 
         score = round(earned, 2)
         passed = sum(1 for c in cases if c['verdict'] == 'accepted')
-        return score, _summary(problem, spec, cases, score, passed,
-                               baseline, started)
+        return score, _summary(problem, spec, cases, score, passed, started)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -177,7 +194,7 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
 # 辅助
 # ---------------------------------------------------------------------------
 
-def _summary(problem, spec, cases, score, passed, baseline, started):
+def _summary(problem, spec, cases, score, passed, started):
     """把逐点结果汇总成给选手看的 details。verdict 反映整体结论。"""
     if passed == spec['case_count']:
         verdict, err = 'accepted', None
@@ -203,9 +220,12 @@ def _summary(problem, spec, cases, score, passed, baseline, started):
         'error': err,
         'message': message,
         'problem': problem,
-        'baseline_instructions': baseline,
+        # baseline 现在是逐数据点的（见 cases[i]['baseline']），顶层不再给单一值
+        'baseline_instructions': None,
         'player_instructions': min((c['instructions'] for c in cases
                                     if c['instructions'] is not None), default=None),
+        'min_cost': min((c['cost'] for c in cases
+                         if c.get('cost') is not None), default=None),
         'score': score,
         'full_score': spec['full_score'],
         'passed_cases': passed,
@@ -264,7 +284,11 @@ def _precheck(spec, code_path):
 
 
 def _load_baseline(spec, problem_id):
-    """加载 baseline 指令数；缺失时返回 None（该题将不判分，但评测仍跑通）。"""
+    """加载**逐数据点**的 baseline：返回 {规模N: 指令数}。
+
+    每个数据点规模不同，指令数自然不同，不能用一个数。缺失时返回 {}，
+    该题不判分（但仍跑通、能给出正确性结果）。
+    """
     path = spec['baseline_file']
     if not os.path.isabs(path):
         path = os.path.join(current_app.config['BASE_DIR'], path)
@@ -272,11 +296,18 @@ def _load_baseline(spec, problem_id):
         with open(path, encoding='utf-8') as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return None
-    entry = data.get(problem_id)
-    if isinstance(entry, dict):
-        return entry.get('baseline_instructions')
-    return entry
+        return {}
+    entry = data.get(problem_id, {})
+    per_n = entry.get('by_size') if isinstance(entry, dict) else None
+    if not isinstance(per_n, dict):
+        return {}
+    return {int(k): v for k, v in per_n.items()}
+
+
+def _baseline_for(spec, problem_id, n):
+    """取某个规模 N 的 baseline 指令数（缓存到 spec 上，避免每点重读文件）。"""
+    cache = spec.setdefault('_baselines', _load_baseline(spec, problem_id))
+    return cache.get(n)
 
 
 def _ratio(baseline, count):

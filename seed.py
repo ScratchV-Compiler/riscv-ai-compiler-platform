@@ -4,6 +4,10 @@
 运行时持久化仍走 SQLite；仅当 `submission` 表为空时，从 `data/demo_submissions.csv`
 导入演示榜单数据。时间戳按「最近一次 05:00 结算点 + offset_minutes」落到当天窗口，
 保证任何时候启动 demo 都有可展示的榜单，不会因数据过期而空榜。
+
+CSV 的 `details` 列装的是**逐数据点原始代价**（由 tools/gen_demo_data.py 生成）。
+演示数据只存原始数据、**不存分数**——分数由榜单按动态基准现算，
+与真实提交走完全相同的链路。
 """
 import csv
 import os
@@ -37,7 +41,7 @@ def seed_demo_submissions(force=False):
                 code_path='',
                 status=(row.get('status') or 'success').strip(),
                 score=float(row.get('score') or 0),
-                details='',
+                details=(row.get('details') or '').strip(),
                 created_at=ts,
                 updated_at=ts,
             ))

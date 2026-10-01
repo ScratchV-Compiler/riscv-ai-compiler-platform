@@ -8,16 +8,15 @@
 cnn_entry:                              # @cnn_entry
 # %bb.0:
 	li	a3, 0
-	li	a2, 0
-	li	a4, 256
+	blez	a2, .LBB0_2
 .LBB0_1:                                # =>This Inner Loop Header: Depth=1
-	add	a5, a0, a3
-	lw	a5, 0(a5)
-	addi	a3, a3, 4
-	add	a2, a5, a2
-	bne	a3, a4, .LBB0_1
-# %bb.2:
-	sw	a2, 0(a1)
+	lw	a4, 0(a0)
+	add	a3, a4, a3
+	addi	a2, a2, -1
+	addi	a0, a0, 4
+	bnez	a2, .LBB0_1
+.LBB0_2:
+	sw	a3, 0(a1)
 	ret
 .Lfunc_end0:
 	.size	cnn_entry, .Lfunc_end0-cnn_entry

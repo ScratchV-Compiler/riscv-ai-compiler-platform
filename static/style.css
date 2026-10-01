@@ -445,6 +445,12 @@ code, pre, kbd, samp { font-family: var(--mono); }
 .table-standings .rank.top { color: var(--brand-500-text); font-weight: 700; }
 .table-standings .total { font-weight: 700; font-size: 0.95rem; }
 .table-standings .score-0 { color: var(--ink-400); }
+/* 单题榜：某个数据点列上代价最小的那一格（即该点最优） */
+.table-standings .cell-best {
+  font-weight: 700;
+  color: var(--brand-500-text);
+  background: var(--brand-100);
+}
 
 /* 表头排序按钮 */
 .th-sort {

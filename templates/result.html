@@ -59,21 +59,28 @@
       <script>setTimeout(function () { location.reload(); }, 2500);</script>
     {% else %}
       <p class="mb-2">
-        {% if details and details.score is not none %}
-        <strong>得分：{{ '%.2f'|format(details.score) }}
-          {%- if details.full_score %} / {{ details.full_score }}{% endif %}</strong>
+        {% set shown = live_score if live_score is not none else (details.score if details else none) %}
+        {% if shown is not none %}
+        <strong>得分：{{ '%.2f'|format(shown) }}
+          {%- if details and details.full_score %} / {{ details.full_score }}{% endif %}</strong>
         {% endif %}
         {% if details and details.message %}
         <span class="text-body-secondary">— {{ details.message }}</span>
         {% endif %}
+      </p>
+      <p class="form-hint">
+        得分为<strong>动态基准</strong>口径：基准 = 当前全场该数据点的最优成绩，
+        因此会随其他队伍的成绩浮动（对齐官方策划案「以全场最优为基准」）。
       </p>
       {% if details and details.cases %}
       <dl class="spec">
         <dt>数据点</dt>
         <dd class="mono">{{ details.passed_cases }} / {{ details.total_cases }} 通过
           （每点 {{ details.points_per_case }} 分）</dd>
-        <dt>基准指令数</dt><dd class="mono">{{ details.baseline_instructions or '—' }}</dd>
-        <dt>最少指令数</dt><dd class="mono">{{ details.player_instructions or '—' }}</dd>
+        <dt>最好代价</dt>
+        <dd class="mono">{{ details.min_cost or '—' }}
+          <span class="text-body-secondary small">
+            （cost = 指令数 + {{ config.MISS_PENALTY }} × L1 未命中，各数据点中最小）</span></dd>
       </dl>
       {% endif %}
     {% endif %}
@@ -90,7 +97,9 @@
           <th scope="col">数据点</th>
           <th scope="col">判定</th>
           <th scope="col" class="text-end">得分</th>
+          <th scope="col" class="text-end">代价</th>
           <th scope="col" class="text-end">指令数</th>
+          <th scope="col" class="text-end">L1 未命中</th>
           <th scope="col" class="text-end">基准</th>
           <th scope="col" class="text-end">比值</th>
         </tr>
@@ -105,7 +114,9 @@
             </span>
           </td>
           <td class="n">{{ '%.2f'|format(c.points or 0) }} / {{ c.points_max }}</td>
+          <td class="n">{{ c.cost if c.cost is not none else '—' }}</td>
           <td class="n">{{ c.instructions if c.instructions is not none else '—' }}</td>
+          <td class="n">{{ c.d_miss if c.d_miss is not none else '—' }}</td>
           <td class="n">{{ c.baseline if c.baseline else '—' }}</td>
           <td class="n">
             {% if c.ratio is not none %}{{ '%.3f'|format(c.ratio) }}{% else %}—{% endif %}
@@ -114,7 +125,7 @@
         {% if c.detail %}
         <tr>
           <td></td>
-          <td colspan="5" class="small text-body-secondary">{{ c.detail }}</td>
+          <td colspan="6" class="small text-body-secondary">{{ c.detail }}</td>
         </tr>
         {% endif %}
         {% endfor %}

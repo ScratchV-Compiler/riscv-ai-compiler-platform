@@ -1,35 +1,59 @@
 {
-  "matmul-4x4": {
-    "baseline_instructions": 360,
-    "reference": "reference/matmul.s",
-    "measured_counts": [
-      360,
-      360,
-      360
-    ],
-    "march": "rv32im",
-    "no_relax": true
-  },
   "add": {
-    "baseline_instructions": 536,
-    "reference": "reference/add.s",
-    "measured_counts": [
-      536,
-      536,
-      536
-    ],
+    "by_size": {
+      "64": 856,
+      "128": 1612,
+      "256": 3124,
+      "512": 6148,
+      "1024": 12196,
+      "1536": 18244,
+      "2048": 24293,
+      "2560": 30371,
+      "3072": 36419,
+      "4096": 48514
+    },
     "march": "rv32im",
-    "no_relax": true
+    "metric": "cost = instructions + 15 * l1_misses",
+    "miss_penalty": 15,
+    "no_relax": true,
+    "reference": "reference/add.s"
+  },
+  "matmul": {
+    "by_size": {
+      "4": 923,
+      "8": 5689,
+      "12": 17762,
+      "16": 40645,
+      "20": 77794,
+      "24": 132618,
+      "32": 309397,
+      "40": 598442,
+      "48": 1027604,
+      "64": 2416420
+    },
+    "march": "rv32im",
+    "metric": "cost = instructions + 15 * l1_misses",
+    "miss_penalty": 15,
+    "no_relax": true,
+    "reference": "reference/matmul.s"
   },
   "reducesum": {
-    "baseline_instructions": 344,
-    "reference": "reference/reducesum.s",
-    "measured_counts": [
-      344,
-      344,
-      344
-    ],
+    "by_size": {
+      "64": 494,
+      "128": 874,
+      "256": 1636,
+      "512": 3156,
+      "1024": 6196,
+      "1536": 9236,
+      "2048": 12277,
+      "2560": 15317,
+      "3072": 18357,
+      "4096": 24436
+    },
     "march": "rv32im",
-    "no_relax": true
+    "metric": "cost = instructions + 15 * l1_misses",
+    "miss_penalty": 15,
+    "no_relax": true,
+    "reference": "reference/reducesum.s"
   }
 }
