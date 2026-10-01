@@ -17,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 
 from models import Submission
 from problems import problem_ids
-from scoring import build_score_table
+from riscv_problems import get_eval_spec, case_label
+from scoring import parse_details, field_best, score_details, per_case_points
 
 UTC8 = timezone(timedelta(hours=8))
 RESET_HOUR = 5
@@ -62,21 +63,37 @@ def build_standings(problem="all", stage=1):
     subs = query.all()
     # 动态基准：分数在**读取时**用当前全场最优现算（见 scoring.py 的说明）。
     # 没有新格式原始数据的提交（旧记录）退回库里存的 score。
-    live, best = build_score_table(subs)
+    parsed = [(sub, parse_details(sub)) for sub in subs]
+    best = field_best([(sub.problem_id, d) for sub, d in parsed])
+
+    # 单题视图：把该题的 10 个数据点铺成 10 列（逐点得分）
+    size_cols = []
+    if only:
+        _spec = get_eval_spec(only)
+        if _spec:
+            size_cols = [(n, case_label(_spec, i))
+                         for i, n in enumerate(_spec['data_point_sizes'])]
 
     teams = {}
-    for sub in subs:
+    for sub, details in parsed:
         row = teams.setdefault(
             sub.team_name,
-            {"team": sub.team_name, "scores": {}, "count": 0, "last": None},
+            {"team": sub.team_name, "scores": {}, "count": 0, "last": None,
+             "by_size": {}},
         )
         row["count"] += 1
         if row["last"] is None or sub.created_at > row["last"]:
             row["last"] = sub.created_at
         if sub.problem_id in scoring_cols:
-            score = live.get(sub.id, float(sub.score or 0.0))
+            live_score, _ = score_details(sub.problem_id, details, best)
+            score = live_score if live_score is not None else float(sub.score or 0.0)
             prev = row["scores"].get(sub.problem_id, 0.0)
             row["scores"][sub.problem_id] = max(prev, score)
+            # 逐点得分：同一数据点取该队历次提交里的最高分
+            for n, pts in per_case_points(sub.problem_id, details, best).items():
+                cur = row["by_size"].get(n, 0.0)
+                if pts > cur:
+                    row["by_size"][n] = pts
 
     rows = []
     for row in teams.values():
@@ -86,6 +103,10 @@ def build_standings(problem="all", stage=1):
                 "team": row["team"],
                 "scores": {pid: round(row["scores"].get(pid, 0.0), 2) for pid in display_cols},
                 "total": round(total, 2),
+                # 没打过的数据点用 None（模板显示「—」）——与"打了但得 0 分"区分开。
+                # 旧记录（规模分级之前评的）没有 size 字段，会整行显示「—」。
+                "by_size": {n: (round(row["by_size"][n], 2) if n in row["by_size"] else None)
+                            for n, _ in size_cols},
                 "count": row["count"],
                 "last": row["last"],
                 "last_str": fmt_local(row["last"]),
@@ -98,6 +119,7 @@ def build_standings(problem="all", stage=1):
 
     return {
         "columns": display_cols,
+        "size_columns": size_cols,
         "rows": rows,
         "total_label": "得分" if only else "总分",
         "since": since,

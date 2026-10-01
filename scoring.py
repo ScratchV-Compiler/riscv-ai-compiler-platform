@@ -102,6 +102,23 @@ def score_details(problem_id, details, best, spec=None):
     return round(total, 2), scored
 
 
+def per_case_points(problem_id, details, best):
+    """按动态基准算**每个数据点**的得分；返回 {规模N: 得分}。
+
+    榜单选中单题时用它把 10 个数据点铺成 10 列——逐点得分能看出
+    「哪几个规模做得好、哪个规模崩了」，比只看合计分有信息量得多。
+    """
+    out = {}
+    for c in case_records(details):
+        if c['verdict'] != 'accepted' or not c['cost']:
+            continue
+        base = best.get((problem_id, c['size']))
+        if not base:
+            continue
+        out[c['size']] = round(c['points_max'] * min(1.0, base / c['cost']), 3)
+    return out
+
+
 def full_score_of(details, spec=None):
     """该提交所属题目的满分（优先取 details 里记的，退回规格）。"""
     if details and details.get('full_score') is not None:
