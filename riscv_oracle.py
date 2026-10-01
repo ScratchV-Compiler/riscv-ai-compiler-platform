@@ -110,8 +110,16 @@ KERNELS = {
 def check_output(got, expected, spec, n=None):
     """比对选手输出与参考输出。
 
-    返回 (ok, message)。message 只含**十进制数值差**，绝不回显原始字节——
-    否则选手可用 `.incbin` 读宿主文件、再借失败信息把内容带出来（见 docs/08）。
+    返回 (ok, message)。**只报位置，不报数值**：
+
+    - 数值：评测输入是固定的（见 docs/08「官方评测用例种子」），一旦回显
+      「期望 X，实际 Y」，选手就能逐个套取——提交全 0 拿到第 0 个期望值，
+      再据此拿第 1 个……迭代若干次即得该数据点的全部答案。所以这里只说
+      **哪个位置不对**。位置不构成泄漏：知道第 k 个错，不等于知道它该是多少。
+    - 原始字节：同样绝不回显，否则选手可用 `.incbin` 读宿主文件再借失败信息带出。
+
+    输出长度不在此列——那是题面已公开的信息（如「输出 N 个 int32」），
+    不构成答案泄漏，且对排查很有用，故保留。
     """
     if len(got) != len(expected):
         return False, f'输出长度不符：期望 {len(expected)} 个数值，实际 {len(got)} 个'
@@ -120,7 +128,7 @@ def check_output(got, expected, spec, n=None):
     for idx, (g, e) in enumerate(zip(got, expected)):
         if abs(g - e) > tol:
             where = _describe_index(idx, spec, n)
-            return False, f'第 {idx} 个输出数值不符{where}：期望 {e}，实际 {g}'
+            return False, f'第 {idx} 个输出数值不符{where}'
     return True, ''
 
 
