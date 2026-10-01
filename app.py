@@ -16,7 +16,8 @@ from standings import build_standings, last_reset_utc
 from scoring import build_score_table, parse_details
 import riscv_runner
 from auth import (bp as auth_bp, csrf, current_user, login_required,
-                  submit_wait_seconds, mark_submitted, format_wait)
+                  submit_wait_seconds, mark_submitted, format_wait,
+                  submission_rows)
 from seed import seed_demo_submissions
 
 app = Flask(__name__)
@@ -251,6 +252,12 @@ def submit_page():
             wait_seconds=submit_wait_seconds(user),
             rate_limited=request.args.get('rate_limited') == '1',
             interval=app.config['SUBMIT_INTERVAL_SECONDS'],
+            # 提交页也放一份最近提交 —— 从别处回到本页时能直接点进评测详情，
+            # 不必绕到「我的队伍」去翻
+            recent=(submission_rows(
+                Submission.query.filter_by(team_name=team.name)
+                .order_by(Submission.created_at.desc()).limit(5).all())
+                if team else []),
         )
 
     submission, err, reason = _create_submission(
