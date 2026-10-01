@@ -91,6 +91,18 @@ class PasswordReset(db.Model):
     user = db.relationship('User', backref='password_resets')
 
 
+class SubmitThrottle(db.Model):
+    """提交间隔限流：记录每个选手最近一次**成功**提交的时间。
+
+    刻意做成独立的表而不是给 Submission 加列——`create_all()` 只创建缺失的表、
+    不会 ALTER 既有表，所以加列在老库上会静默失效（见 docs/08 的说明）。
+    """
+    __tablename__ = 'submit_throttle'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    last_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Team(db.Model):
     """P2 队伍。邀请码为入队/再入队的索引。"""
     __tablename__ = 'teams'

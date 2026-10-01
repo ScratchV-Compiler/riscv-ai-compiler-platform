@@ -62,6 +62,16 @@
   </span>
 </div>
 
+{% if wait_seconds %}
+{# 距上次成功提交不足间隔：提前告知并倒计时，免得点了才被拒 #}
+<div class="notice notice-warn mb-3" role="status" id="waitNotice">
+  <div>
+    距上次成功提交不足 {{ interval // 60 }} 分钟，还需等待
+    <strong class="mono" id="waitCountdown">{{ wait_seconds }}</strong> 秒后才能再次提交。
+  </div>
+</div>
+{% endif %}
+
 <section class="panel auth-panel">
   <div class="panel-head">
     <h2>提交到「{{ problem.title }}」</h2>
@@ -103,7 +113,8 @@ cnn_entry:
       </div>
 
       <div class="d-flex flex-wrap align-items-center gap-2">
-        <button class="btn btn-brand" type="submit">提交评测</button>
+        <button class="btn btn-brand" type="submit" id="submitBtn"
+                {% if wait_seconds %}disabled{% endif %}>提交评测</button>
         <span class="small">
           以队伍「{{ team.name }}」提交 · 今日已用 {{ quota.used }}/{{ quota.limit }} 次
         </span>
@@ -147,5 +158,67 @@ cnn_entry:
     </dl>
   </div>
 </section>
+{% endif %}
+
+{# 被限流跳回时弹提示框；同时把倒计时跑起来 #}
+{% if rate_limited %}
+<div class="modal fade" id="rateModal" tabindex="-1" aria-labelledby="rateModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rateModalLabel">提交过于频繁</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">
+          每位选手两次成功提交之间需间隔 {{ interval // 60 }} 分钟。
+          请等待 <strong class="mono" id="modalCountdown">{{ wait_seconds }}</strong> 秒后再试。
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-brand" data-bs-dismiss="modal">知道了</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if wait_seconds %}
+<script>
+  (function () {
+    var left = {{ wait_seconds }};
+    var btn = document.getElementById('submitBtn');
+    var cd = document.getElementById('waitCountdown');
+    var mcd = document.getElementById('modalCountdown');
+    function fmt(s) {
+      if (s < 60) return s + ' 秒';
+      var m = Math.floor(s / 60), r = s % 60;
+      return r ? m + ' 分 ' + r + ' 秒' : m + ' 分钟';
+    }
+    function tick() {
+      if (cd) cd.textContent = fmt(left);
+      if (mcd) mcd.textContent = fmt(left);
+      if (left <= 0) {
+        if (btn) { btn.disabled = false; btn.textContent = '提交评测'; }
+        var n = document.getElementById('waitNotice');
+        if (n) n.remove();
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = '请等待 ' + fmt(left); }
+      left -= 1;
+      setTimeout(tick, 1000);
+    }
+    tick();
+  })();
+</script>
+{% endif %}
+
+{% if rate_limited %}
+<script>
+  (function () {
+    var el = document.getElementById('rateModal');
+    if (el && window.bootstrap) new bootstrap.Modal(el).show();
+  })();
+</script>
 {% endif %}
 {% endblock %}

@@ -68,6 +68,9 @@ class Config:
     EVAL_TOTAL_BUDGET = 180       # 一次评测总预算，超了判 timeout
     SUBMISSION_MAX_BYTES = 256 * 1024   # 提交源码大小上限
     MAX_QUEUE_DEPTH = 50          # 评测队列深度上限，超了 /api/submit 返回 429
+    # 提交间隔限流：同一选手两次**成功**提交之间至少间隔这么久（秒）。
+    # 只对成功提交计时——传错文件、后缀不对等无效提交不消耗间隔。
+    SUBMIT_INTERVAL_SECONDS = int(os.environ.get('PLATFORM_SUBMIT_INTERVAL') or 120)
     WORKER_COUNT = 0              # 0 = 自动（min(2, cpu)）
     STALE_RUNNING_MINUTES = 15    # 卡在 running 超过这么久就回收为失败
 

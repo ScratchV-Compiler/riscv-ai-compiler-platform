@@ -14,7 +14,8 @@ from riscv_problems import (get_eval_spec, EVAL_SPECS, case_elements,
                             case_label, case_purpose)
 from standings import build_standings, last_reset_utc
 from scoring import build_score_table, parse_details
-from auth import bp as auth_bp, csrf, current_user, login_required
+from auth import (bp as auth_bp, csrf, current_user, login_required,
+                  submit_wait_seconds, mark_submitted, format_wait)
 from seed import seed_demo_submissions
 
 app = Flask(__name__)
@@ -152,47 +153,56 @@ def _team_quota_used(team_name):
 
 
 def _create_submission(user, problem_id, file_storage, source_text=None):
-    """校验并落库一次提交。返回 (submission, error_message)。
+    """校验并落库一次提交。返回 (submission, error_message, reason)。
+
+    reason 为机器可读短码（None / 'rate_limited' / ...），调用方据此决定
+    HTTP 状态与提示方式；页面只看 error_message。
 
     按 D9 收紧：必须登录且已入队，队伍名只从登录态取，不再接受表单传入。
     源码有两种来源：上传的文件，或直接粘贴的文本；同时提供时以文件为准。
     """
     problem = get_problem(problem_id)
     if problem is None:
-        return None, '赛题不存在'
+        return None, '赛题不存在', None
     spec = get_eval_spec(problem_id)
     if spec is None:
-        return None, '该题暂未开放提交评测'
+        return None, '该题暂未开放提交评测', None
     if user.team is None:
-        return None, '请先创建或加入一支队伍'
+        return None, '请先创建或加入一支队伍', None
 
     suffix = spec['file_suffix']
     uploaded = file_storage is not None and (file_storage.filename or '').strip()
     if uploaded:
         # 后缀校验只对上传文件有意义；粘贴的内容没有文件名
         if not file_storage.filename.lower().endswith(suffix):
-            return None, f'文件类型不符，本赛题请提交 {suffix} 文件'
+            return None, f'文件类型不符，本赛题请提交 {suffix} 文件', None
         data = file_storage.read()
         origin = file_storage.filename
     elif (source_text or '').strip():
         data = source_text.encode('utf-8')
         origin = '（粘贴的代码）'
     else:
-        return None, '请上传源码文件，或直接粘贴代码'
+        return None, '请上传源码文件，或直接粘贴代码', None
 
     max_bytes = app.config['SUBMISSION_MAX_BYTES']
     if not data.strip():
-        return None, '提交的源码是空的'
+        return None, '提交的源码是空的', None
     if len(data) > max_bytes:
-        return None, f'源码过大（{len(data)} 字节，上限 {max_bytes} 字节）'
+        return None, f'源码过大（{len(data)} 字节，上限 {max_bytes} 字节）', None
+
+    # 提交间隔限流：按选手计。**放在文件校验之后**——传错文件/后缀不对这类
+    # 无效提交不该被罚等 2 分钟（它们是本地就能发现的问题）。
+    wait = submit_wait_seconds(user)
+    if wait:
+        return None, f'提交过于频繁，请等待 {format_wait(wait)}后再试', 'rate_limited'
 
     quota = app.config['DAILY_QUOTA']
     used = _team_quota_used(user.team.name)
     if used >= quota:
-        return None, f'今日提交次数已用尽（{used}/{quota}）'
+        return None, f'今日提交次数已用尽（{used}/{quota}）', None
 
     if queue_depth() >= app.config['MAX_QUEUE_DEPTH']:
-        return None, '评测队列繁忙，请稍后重试'
+        return None, '评测队列繁忙，请稍后重试', None
 
     # 文件名不含队名/题名，避免路径穿越与特殊字符问题
     filename = f"{int(time.time() * 1000)}_{secrets.token_hex(6)}{suffix}"
@@ -209,7 +219,8 @@ def _create_submission(user, problem_id, file_storage, source_text=None):
     db.session.add(submission)
     db.session.commit()
     add_task(submission.id)
-    return submission, None
+    mark_submitted(user)        # 成功提交才计时
+    return submission, None, None
 
 
 @app.route('/submit', methods=['GET', 'POST'])
@@ -232,13 +243,19 @@ def submit_page():
             entry_symbol=spec.get('entry_symbol', 'cnn_entry'),
             quota={'used': _team_quota_used(team.name) if team else 0,
                    'limit': app.config['DAILY_QUOTA']},
+            wait_seconds=submit_wait_seconds(user),
+            rate_limited=request.args.get('rate_limited') == '1',
+            interval=app.config['SUBMIT_INTERVAL_SECONDS'],
         )
 
-    submission, err = _create_submission(
+    submission, err, reason = _create_submission(
         user, problem['id'], request.files.get('code'), request.form.get('source'))
     if err:
         flash(err, 'error')
-        return redirect(url_for('submit_page', problem=problem['id']))
+        args = {'problem': problem['id']}
+        if reason == 'rate_limited':
+            args['rate_limited'] = 1        # 让页面弹出提示框
+        return redirect(url_for('submit_page', **args))
     flash(f'已提交 #{submission.id}，正在评测', 'success')
     return redirect(url_for('result_page', submission_id=submission.id))
 
@@ -252,10 +269,11 @@ def submit():
     payload = request.get_json(silent=True) or {}
     problem_id = request.form.get('problem') or payload.get('problem')
     source_text = request.form.get('source') or payload.get('source')
-    submission, err = _create_submission(user, problem_id, request.files.get('code'), source_text)
+    submission, err, reason = _create_submission(
+        user, problem_id, request.files.get('code'), source_text)
     if err:
-        status = 429 if '队列繁忙' in err else 400
-        return jsonify({'error': err}), status
+        status = 429 if reason == 'rate_limited' or '队列繁忙' in err else 400
+        return jsonify({'error': err, 'reason': reason}), status
     return jsonify({'submission_id': submission.id, 'status': 'pending'}), 201
 
 

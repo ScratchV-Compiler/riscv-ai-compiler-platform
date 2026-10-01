@@ -19,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect
 
 import mailer
 from models import (db, User, Team, TeamMember, Submission, PasswordReset,
-                    TEAM_MAX_SIZE)
+                    SubmitThrottle, TEAM_MAX_SIZE)
 from standings import last_reset_utc
 
 bp = Blueprint('auth', __name__)
@@ -119,6 +119,42 @@ def _record_reset_request(email):
         rec = {'count': 0, 'window_start': now}
         _reset_requests[key] = rec
     rec['count'] += 1
+
+
+# ---------------------------------------------------------------------------
+# 提交间隔限流（每选手两次成功提交之间至少间隔 N 秒）
+# ---------------------------------------------------------------------------
+
+def submit_wait_seconds(user):
+    """还需要等多少秒才能再次提交；0 表示可以提交。"""
+    rec = db.session.get(SubmitThrottle, user.id)
+    if rec is None:
+        return 0
+    interval = current_app.config['SUBMIT_INTERVAL_SECONDS']
+    elapsed = (datetime.utcnow() - rec.last_at).total_seconds()
+    remain = interval - elapsed
+    return int(remain) + 1 if remain > 0 else 0
+
+
+def mark_submitted(user):
+    """记录一次成功提交的时间。**只在提交成功时调用**——
+    传错文件、后缀不对这类无效提交不该消耗间隔。"""
+    now = datetime.utcnow()
+    rec = db.session.get(SubmitThrottle, user.id)
+    if rec is None:
+        db.session.add(SubmitThrottle(user_id=user.id, last_at=now))
+    else:
+        rec.last_at = now
+    db.session.commit()
+
+
+def format_wait(seconds):
+    """把等待秒数说成人话：90 → 「1 分 30 秒」。"""
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f'{seconds} 秒'
+    m, s = divmod(seconds, 60)
+    return f'{m} 分 {s} 秒' if s else f'{m} 分钟'
 
 
 # ---------------------------------------------------------------------------
