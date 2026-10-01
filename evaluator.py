@@ -98,6 +98,7 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
         for idx in range(spec['case_count']):
             case = {'case': idx, 'seed': None, 'size': None, 'verdict': None,
                     'points': 0.0, 'points_max': per_case, 'instructions': None,
+                    'cost': None, 'd_miss': None, 'd_access': None, 'd_hitrate': None,
                     'baseline': None, 'ratio': None, 'detail': ''}
             cases.append(case)
 
@@ -163,14 +164,17 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='runtime_error', detail='指令计数失败')
                 continue
 
-            ratio = _ratio(case['baseline'], count)
+            # 评测指标：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）
+            penalty = current_app.config['MISS_PENALTY']
+            c0 = stats[-1] if stats else None
+            n_miss = ((c0['d_miss'] + c0['i_miss']) if c0 else 0)
+            cost = count + penalty * n_miss
+            ratio = _ratio(case['baseline'], cost)
             pts = round(per_case * ratio, 3)
             earned += pts
-            case.update(verdict='accepted', instructions=count, ratio=ratio,
-                        points=pts)
-            # 访存统计只作诊断，暂不参与计分（见 docs/08：当前规模下访存非瓶颈）
-            if stats:
-                c0 = stats[-1]
+            case.update(verdict='accepted', instructions=count, cost=cost,
+                        ratio=ratio, points=pts)
+            if c0:
                 case['d_miss'] = c0['d_miss']
                 case['d_access'] = c0['d_access']
                 case['d_hitrate'] = c0['d_hitrate']
@@ -216,6 +220,8 @@ def _summary(problem, spec, cases, score, passed, started):
         'baseline_instructions': None,
         'player_instructions': min((c['instructions'] for c in cases
                                     if c['instructions'] is not None), default=None),
+        'min_cost': min((c['cost'] for c in cases
+                         if c.get('cost') is not None), default=None),
         'score': score,
         'full_score': spec['full_score'],
         'passed_cases': passed,

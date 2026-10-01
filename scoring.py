@@ -2,7 +2,10 @@
 """动态基准计分（对齐官方策划案口径）：**基准 = 全场最优**。
 
     某队得分 = 基准 ÷ 该队成绩 × 满分
-    基准 = 所有参赛队伍中该数据点的最优（最小）指令数
+    基准 = 所有参赛队伍中该数据点的最优（最小）**代价**
+
+「成绩」是 cost 而非裸指令数：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）。
+旧记录（换指标前评的）没有 cost 字段，退回用 instructions 充当，等价于 α=0。
 
 ## 为什么必须实时算，而不是评测时算
 
@@ -52,8 +55,12 @@ def case_records(details):
         pmax = c.get('points_max')
         if n is None or pmax is None:
             continue
-        out.append({'size': n, 'instructions': cnt, 'points_max': pmax,
-                    'verdict': c.get('verdict')})
+        # 指标是 cost；旧记录没有该字段则退回 instructions（等价 α=0）
+        measure = c.get('cost')
+        if measure is None:
+            measure = cnt
+        out.append({'size': n, 'instructions': cnt, 'cost': measure,
+                    'points_max': pmax, 'verdict': c.get('verdict')})
     return out
 
 
@@ -65,12 +72,12 @@ def field_best(submissions):
     best = {}
     for problem_id, details in submissions:
         for c in case_records(details):
-            if c['verdict'] != 'accepted' or not c['instructions']:
+            if c['verdict'] != 'accepted' or not c['cost']:
                 continue
             key = (problem_id, c['size'])
             cur = best.get(key)
-            if cur is None or c['instructions'] < cur:
-                best[key] = c['instructions']
+            if cur is None or c['cost'] < cur:
+                best[key] = c['cost']
     return best
 
 
@@ -85,12 +92,12 @@ def score_details(problem_id, details, best, spec=None):
     total = 0.0
     scored = 0
     for c in recs:
-        if c['verdict'] != 'accepted' or not c['instructions']:
+        if c['verdict'] != 'accepted' or not c['cost']:
             continue
         base = best.get((problem_id, c['size']))
         if not base:
             continue
-        total += c['points_max'] * min(1.0, base / c['instructions'])
+        total += c['points_max'] * min(1.0, base / c['cost'])
         scored += 1
     return round(total, 2), scored
 

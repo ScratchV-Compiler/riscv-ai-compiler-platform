@@ -26,6 +26,9 @@ import riscv_runner          # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# 与平台一致：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）
+MISS_PENALTY = int(os.environ.get('PLATFORM_MISS_PENALTY') or 15)
+
 # 与评测一致；这里直接给常量，避免在 app context 外依赖 current_app
 CFG = {
     'compile_timeout': 90, 'per_case_timeout': 60, 'count_timeout': 300,
@@ -73,12 +76,17 @@ def measure_problem(problem_id, spec, asm_path):
                     f'{problem_id} N={n} 参考解本身没通过'
                     f'（rc={rc}, guard={guard_ok}）：{msg or "输出不符"}')
 
+            CFG.pop('_cache_stats', None)
             count, trunc = riscv_runner.count_instructions(
                 elf, CFG, work, os.path.join(work, f't{idx}.log'))
             if trunc or count is None:
                 raise SystemExit(f'{problem_id} N={n} 指令数统计失败或被截断')
-            by_size[n] = count
-            print(f'    N={n:<6} → {count:>10} 条指令')
+            stats = riscv_runner.take_cache_stats(CFG)
+            n_miss = (stats[-1]['d_miss'] + stats[-1]['i_miss']) if stats else 0
+            cost = count + MISS_PENALTY * n_miss
+            by_size[n] = cost
+            print(f'    N={n:<6} → 指令 {count:>9} + {MISS_PENALTY}×{n_miss:<6} '
+                  f'= 代价 {cost:>10}')
         return by_size
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -98,7 +106,9 @@ def main():
         asm = build_reference_asm(spec['reference'])
         by_size = measure_problem(problem_id, spec, asm)
         data[problem_id] = {
-            'by_size': by_size,
+            'by_size': by_size,                 # 每点 baseline 是 **cost**，不是裸指令数
+            'metric': 'cost = instructions + %d * l1_misses' % MISS_PENALTY,
+            'miss_penalty': MISS_PENALTY,
             'reference': os.path.relpath(asm, ROOT),
             'march': 'rv32im', 'no_relax': True,
         }

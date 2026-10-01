@@ -77,9 +77,10 @@
         <dt>数据点</dt>
         <dd class="mono">{{ details.passed_cases }} / {{ details.total_cases }} 通过
           （每点 {{ details.points_per_case }} 分）</dd>
-        <dt>最少指令数</dt>
-        <dd class="mono">{{ details.player_instructions or '—' }}
-          <span class="text-body-secondary small">（各数据点中最小的一次）</span></dd>
+        <dt>最好代价</dt>
+        <dd class="mono">{{ details.min_cost or '—' }}
+          <span class="text-body-secondary small">
+            （cost = 指令数 + {{ config.MISS_PENALTY }} × L1 未命中，各数据点中最小）</span></dd>
       </dl>
       {% endif %}
     {% endif %}
@@ -96,7 +97,9 @@
           <th scope="col">数据点</th>
           <th scope="col">判定</th>
           <th scope="col" class="text-end">得分</th>
+          <th scope="col" class="text-end">代价</th>
           <th scope="col" class="text-end">指令数</th>
+          <th scope="col" class="text-end">L1 未命中</th>
           <th scope="col" class="text-end">基准</th>
           <th scope="col" class="text-end">比值</th>
         </tr>
@@ -111,7 +114,9 @@
             </span>
           </td>
           <td class="n">{{ '%.2f'|format(c.points or 0) }} / {{ c.points_max }}</td>
+          <td class="n">{{ c.cost if c.cost is not none else '—' }}</td>
           <td class="n">{{ c.instructions if c.instructions is not none else '—' }}</td>
+          <td class="n">{{ c.d_miss if c.d_miss is not none else '—' }}</td>
           <td class="n">{{ c.baseline if c.baseline else '—' }}</td>
           <td class="n">
             {% if c.ratio is not none %}{{ '%.3f'|format(c.ratio) }}{% else %}—{% endif %}
@@ -120,7 +125,7 @@
         {% if c.detail %}
         <tr>
           <td></td>
-          <td colspan="5" class="small text-body-secondary">{{ c.detail }}</td>
+          <td colspan="6" class="small text-body-secondary">{{ c.detail }}</td>
         </tr>
         {% endif %}
         {% endfor %}

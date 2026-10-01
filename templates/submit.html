@@ -133,10 +133,14 @@ cnn_entry:
       <dt>指令集</dt>
       <dd>固定 <span class="mono">-march=rv32im</span>（无压缩扩展、无浮点/原子指令），
         关闭链接松弛。</dd>
+      <dt>评测指标</dt>
+      <dd><span class="mono">代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中次数</span>。
+        未命中按目标顺序核的实际情况折算：L1 命中 2 拍、未命中约 15~20 拍且不重叠
+        （该核只有一个填充槽），结合实测 IPC≈0.75，取 α={{ config.MISS_PENALTY }}。</dd>
       <dt>计分</dt>
       <dd>本题 <strong>{{ spec.case_count }} 个数据点</strong>（规模逐点递增，见赛题页表格），
         逐点独立计分：做对的点得分 = 每点分值（{{ spec.points_per_case }} 分）×
-        min(1, <strong>该点</strong>基准指令数 ÷ 本队该点指令数)，做错只丢该点的分。
+        min(1, <strong>该点</strong>基准代价 ÷ 本队该点代价)，做错只丢该点的分。
         本题满分 {{ spec.full_score }}。</dd>
       <dt>防作弊</dt>
       <dd>每次评测的输入由平台随机生成，结果与平台独立算出的参考值比对，无法预先写死答案。</dd>
