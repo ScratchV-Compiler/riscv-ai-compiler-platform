@@ -9,7 +9,7 @@ from flask_sqlalchemy import SQLAlchemy
 from config import Config
 from models import db, Submission
 from tasks import add_task, start_worker, queue_depth, reap_stale_running
-from problems import PROBLEMS, get_problem, problem_ids
+from problems import PROBLEMS, get_problem, problem_ids, submittable_problems
 from riscv_problems import get_eval_spec, EVAL_SPECS
 from standings import build_standings, last_reset_utc
 from auth import bp as auth_bp, csrf, current_user, login_required
@@ -212,6 +212,7 @@ def submit_page():
         team = user.team
         return render_template(
             'submit.html', problem=problem, team=team, spec=spec,
+            problems=submittable_problems(),   # 供页面上的赛题切换器
             suffix=spec.get('file_suffix', '.s'),
             entry_symbol=spec.get('entry_symbol', 'cnn_entry'),
             quota={'used': _team_quota_used(team.name) if team else 0,

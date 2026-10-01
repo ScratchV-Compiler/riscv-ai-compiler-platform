@@ -48,6 +48,20 @@
   </div>
 </section>
 {% else %}
+{# 赛题切换：普通链接跳转（带 ?problem=），URL 可分享、浏览器后退可用、不依赖 JS。
+   切换会整页刷新，未提交的粘贴内容不保留。 #}
+<div class="filter-group mb-3" style="flex-wrap: wrap;">
+  <span class="filter-label">赛题</span>
+  <span class="seg" role="group" aria-label="切换赛题">
+    {% for p in problems %}
+    {% set ps = eval_spec(p.id) %}
+    <a href="{{ url_for('submit_page', problem=p.id) }}"
+       title="{{ p.title }} · {{ ps.case_count }} 个数据点 · 满分 {{ ps.full_score }}"
+       {% if p.id == problem.id %}aria-current="true"{% endif %}>{{ p.title }}</a>
+    {% endfor %}
+  </span>
+</div>
+
 <section class="panel auth-panel">
   <div class="panel-head">
     <h2>提交到「{{ problem.title }}」</h2>
