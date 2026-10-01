@@ -123,7 +123,16 @@ def build_standings(problem="all", stage=1):
     for i, row in enumerate(rows, 1):
         row["rank"] = i
 
-    # 每个数据点列的最优（**代价最小**，即该点最快）——模板据此高亮
+    # 每个题目列的第一名（得分最高）——汇总榜据此高亮。
+    # 全 0 的题不高亮（没人得分时"并列第一"没有意义）。
+    best_by_problem = {}
+    for pid in display_cols:
+        vals = [r["scores"].get(pid, 0.0) for r in rows]
+        vals = [v for v in vals if v > 0]
+        if vals:
+            best_by_problem[pid] = max(vals)
+
+    # 每个数据点列的最优（**代价最小**，即该点最快）——单题榜据此高亮
     best_by_size = {}
     for n, _ in size_cols:
         vals = [r["by_cost"][n] for r in rows if r.get("by_cost", {}).get(n) is not None]
@@ -134,6 +143,7 @@ def build_standings(problem="all", stage=1):
         "columns": display_cols,
         "size_columns": size_cols,
         "best_by_size": best_by_size,
+        "best_by_problem": best_by_problem,
         "rows": rows,
         "total_label": "得分" if only else "总分",
         "since": since,
