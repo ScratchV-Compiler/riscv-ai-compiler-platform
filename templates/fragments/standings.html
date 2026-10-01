@@ -33,7 +33,9 @@
         {% if standings.size_columns %}
         {% for n, label in standings.size_columns %}
         {% set cost = row.by_cost[n] %}
-        <td class="n{% if cost is none %} text-body-secondary{% endif %}">{{ cost if cost is not none else '—' }}</td>
+        {% set is_best = cost is not none and cost == standings.best_by_size.get(n) %}
+        <td class="n{% if is_best %} cell-best{% endif %}{% if cost is none %} text-body-secondary{% endif %}"
+            {% if is_best %}title="该数据点代价最小（{{ label }}）"{% endif %}>{{ cost if cost is not none else '—' }}</td>
         {% endfor %}
         {% endif %}
         {% for pid in standings.columns %}

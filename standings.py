@@ -123,9 +123,17 @@ def build_standings(problem="all", stage=1):
     for i, row in enumerate(rows, 1):
         row["rank"] = i
 
+    # 每个数据点列的最优（**代价最小**，即该点最快）——模板据此高亮
+    best_by_size = {}
+    for n, _ in size_cols:
+        vals = [r["by_cost"][n] for r in rows if r.get("by_cost", {}).get(n) is not None]
+        if vals:
+            best_by_size[n] = min(vals)
+
     return {
         "columns": display_cols,
         "size_columns": size_cols,
+        "best_by_size": best_by_size,
         "rows": rows,
         "total_label": "得分" if only else "总分",
         "since": since,
