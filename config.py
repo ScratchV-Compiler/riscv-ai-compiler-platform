@@ -36,6 +36,24 @@ class Config:
     LOGIN_MAX_FAILURES = 5                           # 登录失败限频阈值
     LOGIN_LOCK_SECONDS = 15 * 60                     # 锁定时长
 
+    # ---- 找回密码 ----
+    # 一次性重置令牌有效期（秒）与「同一邮箱申请重置」的限频
+    RESET_TOKEN_TTL_SECONDS = 30 * 60                # 30 分钟内有效
+    RESET_MAX_REQUESTS = 5                           # 窗口内最多申请次数
+    RESET_WINDOW_SECONDS = 60 * 60                   # 窗口 1 小时
+    # 站点对外基址（用于拼重置链接）；留空则按当前请求 Host 推断。
+    # 反向代理下建议显式设置，如 PUBLIC_BASE_URL=https://contest.example.com
+    PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL') or ''
+
+    # SMTP。未配置 SMTP_HOST 时 mailer 退回「打印到服务端日志」，便于本地测试。
+    SMTP_HOST = os.environ.get('SMTP_HOST') or ''
+    SMTP_PORT = int(os.environ.get('SMTP_PORT') or 587)
+    SMTP_USER = os.environ.get('SMTP_USER') or ''
+    SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD') or ''
+    SMTP_USE_TLS = os.environ.get('SMTP_USE_TLS', '1') != '0'   # STARTTLS，默认开启
+    SMTP_USE_SSL = os.environ.get('SMTP_USE_SSL') == '1'        # 隐式 SSL（465）
+    MAIL_FROM = os.environ.get('MAIL_FROM') or 'no-reply@riscv-contest.local'
+
     # CSRF（Flask-WTF）
     WTF_CSRF_TIME_LIMIT = None                       # 与登录会话同生命周期
     WTF_CSRF_HEADERS = ['X-CSRFToken', 'X-CSRF-Token']

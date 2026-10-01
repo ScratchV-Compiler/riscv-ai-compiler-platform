@@ -72,6 +72,25 @@ class User(db.Model):
         }
 
 
+class PasswordReset(db.Model):
+    """一次性密码重置令牌。
+
+    只存 token 的 sha256 摘要：即使数据库泄露也无法直接拿去重置密码。
+    重置成功后写 used_at 立即失效；过期时间见 RESET_TOKEN_TTL_SECONDS。
+    """
+    __tablename__ = 'password_resets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    request_ip = db.Column(db.String(45), nullable=True)
+
+    user = db.relationship('User', backref='password_resets')
+
+
 class Team(db.Model):
     """P2 队伍。邀请码为入队/再入队的索引。"""
     __tablename__ = 'teams'

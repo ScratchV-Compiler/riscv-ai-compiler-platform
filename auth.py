@@ -7,16 +7,19 @@
 - 存储：SQLite（方案 B）；demo 榜单数据另见 data/demo_submissions.csv。
 """
 import functools
+import hashlib
 import re
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import (Blueprint, current_app, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_wtf.csrf import CSRFProtect
 
-from models import db, User, Team, TeamMember, Submission, TEAM_MAX_SIZE
+import mailer
+from models import (db, User, Team, TeamMember, Submission, PasswordReset,
+                    TEAM_MAX_SIZE)
 from standings import last_reset_utc
 
 bp = Blueprint('auth', __name__)
@@ -28,6 +31,9 @@ _CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # 去掉易混的 0/O/1/I/L
 
 # 登录失败限频：email -> {'count': int, 'until': ts}
 _failures = {}
+
+# 「找回密码」申请限频：email -> {'count': int, 'window_start': ts}（固定窗口）
+_reset_requests = {}
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +97,30 @@ def _clear_failures(email):
     _failures.pop((email or '').strip().lower(), None)
 
 
+def reset_request_retry_after(email):
+    """窗口内申请次数已用尽时返回还需等待的秒数；0 表示可以申请。"""
+    rec = _reset_requests.get((email or '').strip().lower())
+    if not rec:
+        return 0
+    now = time.time()
+    window = current_app.config['RESET_WINDOW_SECONDS']
+    elapsed = now - rec['window_start']
+    if elapsed >= window or rec['count'] < current_app.config['RESET_MAX_REQUESTS']:
+        return 0
+    return int(window - elapsed) + 1
+
+
+def _record_reset_request(email):
+    key = (email or '').strip().lower()
+    now = time.time()
+    window = current_app.config['RESET_WINDOW_SECONDS']
+    rec = _reset_requests.get(key)
+    if rec is None or now - rec['window_start'] >= window:
+        rec = {'count': 0, 'window_start': now}
+        _reset_requests[key] = rec
+    rec['count'] += 1
+
+
 # ---------------------------------------------------------------------------
 # 业务逻辑（页面与 API 共用）
 # ---------------------------------------------------------------------------
@@ -129,6 +159,107 @@ def authenticate(email, password):
         return None, '邮箱或密码不正确'
     _clear_failures(email)
     return user, None
+
+
+# ---------------------------------------------------------------------------
+# 找回密码：一次性令牌 + 邮件
+# ---------------------------------------------------------------------------
+
+RESET_TOKEN_BYTES = 32
+# 对外统一文案：邮箱存在与否都回同一句，避免账号枚举（见 docs/05 D11）
+RESET_REQUESTED_MSG = '如果该邮箱已注册，我们已发送重置链接，请查收（注意垃圾邮件箱）。'
+
+
+def _hash_token(raw):
+    """令牌只存 sha256 摘要，库里拿不到明文。"""
+    return hashlib.sha256((raw or '').encode('utf-8')).hexdigest()
+
+
+def _find_reset(token):
+    if not token:
+        return None
+    return PasswordReset.query.filter_by(token_hash=_hash_token(token)).first()
+
+
+def _reset_token_usable(rec):
+    return (rec is not None and rec.used_at is None
+            and rec.expires_at >= datetime.utcnow())
+
+
+def request_password_reset(email_raw, request_ip=None):
+    """发起找回。返回 (mail_sent, err)。
+
+    邮箱不存在时不报错也不发信，但仍回成功文案——调用方直接用
+    RESET_REQUESTED_MSG 提示，不要区分「已发送/未注册」。
+    """
+    email = (email_raw or '').strip().lower()
+    if not EMAIL_RE.match(email):
+        return False, '邮箱格式不对'
+
+    retry = reset_request_retry_after(email)
+    if retry:
+        return False, f'申请过于频繁，请 {(retry + 59) // 60} 分钟后再试'
+    _record_reset_request(email)
+
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        return True, None
+
+    raw = secrets.token_urlsafe(RESET_TOKEN_BYTES)
+    db.session.add(PasswordReset(
+        user_id=user.id,
+        token_hash=_hash_token(raw),
+        expires_at=datetime.utcnow() + timedelta(
+            seconds=current_app.config['RESET_TOKEN_TTL_SECONDS']),
+        request_ip=(request_ip or '')[:45] or None,
+    ))
+    db.session.commit()
+
+    if current_app.config.get('PUBLIC_BASE_URL'):
+        path = url_for('auth.reset_password_page')
+        reset_url = f"{current_app.config['PUBLIC_BASE_URL'].rstrip('/')}{path}?token={raw}"
+    else:
+        reset_url = url_for('auth.reset_password_page', token=raw, _external=True)
+    return mailer.send_password_reset_email(email, reset_url), None
+
+
+def reset_password(raw_token, new_password):
+    """用一次性令牌设置新密码。返回 (user, err, reason)。
+
+    reason 为机器可读短码（None / 'weak' / 'invalid' / 'used' / 'expired' /
+    'missing'），供 API 映射 HTTP 状态；页面只用 err 文案。
+    """
+    if len(new_password or '') < 8:
+        return None, '密码至少 8 位', 'weak'
+    token = (raw_token or '').strip()
+    if not token:
+        return None, '链接无效，请重新申请', 'invalid'
+
+    rec = _find_reset(token)
+    if rec is None:
+        return None, '链接无效或已失效，请重新申请', 'invalid'
+    if rec.used_at is not None:
+        return None, '该链接已使用过，请重新申请', 'used'
+    if rec.expires_at < datetime.utcnow():
+        return None, '链接已过期，请重新申请', 'expired'
+
+    user = db.session.get(User, rec.user_id)
+    if user is None:
+        return None, '账号不存在，请联系管理员', 'missing'
+
+    now = datetime.utcnow()
+    user.set_password(new_password)
+    rec.used_at = now
+    # 密码已变，同账号其余未用令牌一并作废
+    (PasswordReset.query
+     .filter(PasswordReset.user_id == user.id,
+             PasswordReset.used_at.is_(None),
+             PasswordReset.id != rec.id)
+     .update({'used_at': now}, synchronize_session=False))
+    db.session.commit()
+
+    _clear_failures(user.email)   # 新密码正确，解除因连错密码产生的锁定
+    return user, None, None
 
 
 def _gen_invite_code():
@@ -301,6 +432,43 @@ def login_page():
     return redirect(_safe_next(url_for('index')))
 
 
+@bp.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password_page():
+    if request.method == 'GET':
+        if current_user():
+            return redirect(url_for('auth.team_page'))
+        return render_template('forgot_password.html')
+
+    email = request.form.get('email') or ''
+    _, err = request_password_reset(email, request.remote_addr)
+    if err:
+        flash(err, 'error')
+        return render_template('forgot_password.html', form=request.form), 400
+    flash(RESET_REQUESTED_MSG, 'success')
+    return redirect(url_for('auth.login_page'))
+
+
+@bp.route('/reset-password', methods=['GET', 'POST'])
+def reset_password_page():
+    token = request.values.get('token') or ''
+
+    if request.method == 'GET':
+        if not _reset_token_usable(_find_reset(token)):
+            flash('链接无效或已失效，请重新申请', 'error')
+            return redirect(url_for('auth.forgot_password_page'))
+        return render_template('reset_password.html', token=token)
+
+    if (request.form.get('password') or '') != (request.form.get('password2') or ''):
+        flash('两次输入的密码不一致', 'error')
+        return render_template('reset_password.html', token=token), 400
+    _, err, _reason = reset_password(token, request.form.get('password') or '')
+    if err:
+        flash(err, 'error')
+        return render_template('reset_password.html', token=token), 400
+    flash('密码已重置，请用新密码登录', 'success')
+    return redirect(url_for('auth.login_page'))
+
+
 @bp.route('/logout', methods=['POST'])
 def logout_page():
     session.clear()
@@ -410,6 +578,29 @@ def api_login():
         return jsonify({'error': err}), 401
     _login_session(user)
     return jsonify({'user': user.to_dict()}), 200
+
+
+@bp.route('/api/auth/forgot-password', methods=['POST'])
+def api_forgot_password():
+    _, err = request_password_reset(
+        _payload().get('email') or '', request.remote_addr)
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify({'message': RESET_REQUESTED_MSG}), 200
+
+
+@bp.route('/api/auth/reset-password', methods=['POST'])
+def api_reset_password():
+    data = _payload()
+    password2 = data.get('password2')
+    if password2 is not None and password2 != (data.get('password') or ''):
+        return jsonify({'error': '两次输入的密码不一致'}), 400
+    _, err, reason = reset_password(data.get('token') or '', data.get('password') or '')
+    if err:
+        # 令牌不可用（无效/已用/过期）语义上是「资源已不存在」→ 410
+        status = 410 if reason in ('invalid', 'used', 'expired') else 400
+        return jsonify({'error': err, 'reason': reason}), status
+    return jsonify({'message': '密码已重置，请用新密码登录'}), 200
 
 
 @bp.route('/api/auth/logout', methods=['POST'])
