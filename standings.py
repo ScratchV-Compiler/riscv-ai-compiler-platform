@@ -18,7 +18,8 @@ from datetime import datetime, timedelta, timezone
 from models import Submission
 from problems import problem_ids
 from riscv_problems import get_eval_spec, case_label
-from scoring import parse_details, field_best, score_details, per_case_points
+from scoring import (parse_details, field_best, score_details,
+                     per_case_points, per_case_costs)
 
 UTC8 = timezone(timedelta(hours=8))
 RESET_HOUR = 5
@@ -79,7 +80,7 @@ def build_standings(problem="all", stage=1):
         row = teams.setdefault(
             sub.team_name,
             {"team": sub.team_name, "scores": {}, "count": 0, "last": None,
-             "by_size": {}},
+             "by_size": {}, "by_cost": {}},
         )
         row["count"] += 1
         if row["last"] is None or sub.created_at > row["last"]:
@@ -91,9 +92,13 @@ def build_standings(problem="all", stage=1):
             row["scores"][sub.problem_id] = max(prev, score)
             # 逐点得分：同一数据点取该队历次提交里的最高分
             for n, pts in per_case_points(sub.problem_id, details, best).items():
-                cur = row["by_size"].get(n, 0.0)
-                if pts > cur:
+                if pts > row["by_size"].get(n, 0.0):
                     row["by_size"][n] = pts
+            # 逐点**代价**（原始评测指标）：同一数据点取历次里的最小代价
+            for n, cost in per_case_costs(sub.problem_id, details).items():
+                cur = row["by_cost"].get(n)
+                if cur is None or cost < cur:
+                    row["by_cost"][n] = cost
 
     rows = []
     for row in teams.values():
@@ -107,6 +112,7 @@ def build_standings(problem="all", stage=1):
                 # 旧记录（规模分级之前评的）没有 size 字段，会整行显示「—」。
                 "by_size": {n: (round(row["by_size"][n], 2) if n in row["by_size"] else None)
                             for n, _ in size_cols},
+                "by_cost": {n: row["by_cost"].get(n) for n, _ in size_cols},
                 "count": row["count"],
                 "last": row["last"],
                 "last_str": fmt_local(row["last"]),

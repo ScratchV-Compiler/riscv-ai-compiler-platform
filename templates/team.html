@@ -100,17 +100,26 @@
           <th scope="col">题目</th>
           <th scope="col">状态</th>
           <th scope="col" class="text-end">得分</th>
+          <th scope="col" class="text-end" title="该次提交各数据点中最小的评测代价">最优代价</th>
+          <th scope="col" class="text-end">数据点</th>
           <th scope="col">提交时间</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>
         {% for s in submissions %}
         <tr>
-          <td class="mono">#{{ s.id }}</td>
+          {# ID 做成链接 —— 否则选手看得到列表却点不进评测详情 #}
+          <td class="mono"><a href="{{ url_for('result_page', submission_id=s.id) }}">#{{ s.id }}</a></td>
           <td>{{ s.problem_id }}</td>
-          <td>{{ s.status }}</td>
+          <td>
+            <span class="vbadge vbadge-{{ 'accepted' if s.status == 'success' else ('pending' if s.status in ('pending','running') else 'error') }}">{{ s.status_label }}</span>
+          </td>
           <td class="n">{{ '%.2f'|format(s.score or 0) }}</td>
+          <td class="n">{{ s.cost if s.cost is not none else '—' }}</td>
+          <td class="n">{% if s.passed is not none %}{{ s.passed }}/{{ s.total }}{% else %}—{% endif %}</td>
           <td class="n text-body-secondary">{{ s.created_at.strftime('%m-%d %H:%M') }}</td>
+          <td><a class="small" href="{{ url_for('result_page', submission_id=s.id) }}">评测详情 →</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -118,8 +127,9 @@
   </div>
   {% else %}
   <div class="panel-body empty">
-    <p>还没有提交记录。提交入口在下一阶段上线，当前可以先浏览赛题、准备代码。</p>
-    <a class="btn btn-quiet btn-sm" href="{{ url_for('problems_page') }}">先看赛题</a>
+    <p>还没有提交记录。提交入口已经开放——先看赛题，准备好代码后到
+      <a href="{{ url_for('submit_page') }}">提交页</a>上传或粘贴。</p>
+    <a class="btn btn-brand btn-sm" href="{{ url_for('submit_page') }}">去提交</a>
   </div>
   {% endif %}
 </section>

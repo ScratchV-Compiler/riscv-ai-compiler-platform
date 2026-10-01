@@ -355,6 +355,38 @@ def transfer_captain(user, target_user_id):
 # 序列化
 # ---------------------------------------------------------------------------
 
+_STATUS_LABEL = {
+    'pending': '排队中', 'running': '评测中',
+    'success': '已出分', 'failed': '未通过',
+}
+
+
+def submission_rows(subs):
+    """把提交整理成给「我的提交」表用的行（含可读状态与代价）。
+
+    代价取自 details 的逐数据点原始数据——这是选手看自己成绩的入口，
+    所以把评测指标一并带出来，不必点进结果页才知道。
+    """
+    from scoring import parse_details
+    rows = []
+    for s in subs:
+        d = parse_details(s)
+        costs = [c.get('cost') for c in (d or {}).get('cases', [])
+                 if isinstance(c, dict) and c.get('cost')]
+        rows.append({
+            'id': s.id,
+            'problem_id': s.problem_id,
+            'status': s.status,
+            'status_label': _STATUS_LABEL.get(s.status, s.status),
+            'score': s.score or 0.0,
+            'cost': min(costs) if costs else None,
+            'passed': (d or {}).get('passed_cases'),
+            'total': (d or {}).get('total_cases'),
+            'created_at': s.created_at,
+        })
+    return rows
+
+
 def team_payload(team, with_members=False):
     if team is None:
         return None
@@ -488,7 +520,7 @@ def team_page():
         my_subs = (Submission.query
                    .filter_by(team_name=team.name)
                    .order_by(Submission.created_at.desc())
-                   .limit(20).all())
+                   .limit(20).all())   # 经 submission_rows() 整理后再传给模板
         used = Submission.query.filter(
             Submission.team_name == team.name, Submission.created_at >= since
         ).count()
@@ -496,7 +528,7 @@ def team_page():
         'team.html', user=user, team=team,
         members=[m.user for m in team.members] if team else [],
         quota={'used': used, 'limit': current_app.config['DAILY_QUOTA']},
-        submissions=my_subs,
+        submissions=submission_rows(my_subs),
     )
 
 

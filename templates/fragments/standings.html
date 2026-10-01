@@ -4,7 +4,7 @@
   <table class="table table-standings">
     <caption class="visually-hidden">
       榜单{% if standings.single %}（仅统计 {{ standings.single }}）{% endif %}：
-      排名、队伍、{{ standings.total_label }}{% if standings.size_columns %}、各数据点得分{% endif %}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
+      排名、队伍、{{ standings.total_label }}{% if standings.size_columns %}、各数据点代价{% endif %}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
     </caption>
     <thead>
       <tr>
@@ -14,7 +14,7 @@
         {% if standings.size_columns %}
         {# 单题视图：把该题的每个数据点铺成一列，能看出「哪个规模崩了」 #}
         {% for n, label in standings.size_columns %}
-        <th scope="col" class="text-end" title="数据点 {{ loop.index }}（{{ label }}）">{{ label }}</th>
+        <th scope="col" class="text-end" title="数据点 {{ loop.index }}（{{ label }}）的评测代价">{{ label }}</th>
         {% endfor %}
         {% endif %}
         {% for pid in standings.columns %}
@@ -32,8 +32,8 @@
         <td class="n total">{{ '%.2f'|format(row.total) }}</td>
         {% if standings.size_columns %}
         {% for n, label in standings.size_columns %}
-        {% set pts = row.by_size[n] %}
-        <td class="n{% if pts is not none and pts == 0 %} score-0{% endif %}{% if pts is none %} text-body-secondary{% endif %}">{% if pts is none %}—{% else %}{{ '%.1f'|format(pts) }}{% endif %}</td>
+        {% set cost = row.by_cost[n] %}
+        <td class="n{% if cost is none %} text-body-secondary{% endif %}">{{ cost if cost is not none else '—' }}</td>
         {% endfor %}
         {% endif %}
         {% for pid in standings.columns %}

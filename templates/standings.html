@@ -46,6 +46,13 @@
   </div>
 
   <div class="panel-foot">
+    {% if standings.single %}
+    <span class="text-body-secondary small">
+      逐列数值为该数据点的<strong>评测代价</strong>（越小越好）：
+      代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中，取自本队该点最优的一次提交。
+      最右的合计列仍是<strong>得分</strong>。
+    </span>
+    {% endif %}
     统计区间：{{ standings.since_str }} 起 · 数据更新可能滞后数秒
   </div>
 </section>

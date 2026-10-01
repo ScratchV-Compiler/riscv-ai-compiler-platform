@@ -119,6 +119,19 @@ def per_case_points(problem_id, details, best):
     return out
 
 
+def per_case_costs(problem_id, details, best=None):
+    """每个数据点的**原始代价**（评测指标本身）；返回 {规模N: cost}。
+
+    榜单的单题视图直接展示它——比展示「得分」更贴近评测本身：
+    得分是代价经过动态基准换算后的产物，代价才是选手真正优化的量。
+    """
+    out = {}
+    for c in case_records(details):
+        if c['verdict'] == 'accepted' and c['cost']:
+            out[c['size']] = c['cost']
+    return out
+
+
 def full_score_of(details, spec=None):
     """该提交所属题目的满分（优先取 details 里记的，退回规格）。"""
     if details and details.get('full_score') is not None:
