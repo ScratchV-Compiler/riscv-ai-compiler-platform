@@ -83,6 +83,20 @@ class Config:
     # 世界可写目录遮蔽成空 tmpfs（否则 guest 能往宿主 /tmp 里留文件）。
     EVAL_WORK_ROOT = os.environ.get('PLATFORM_EVAL_WORK_ROOT') or '/var/lib/riscv-eval'
 
+    # ---- 官方评测用例种子 ----
+    # 逗号分隔的整数列表，**不写进仓库**，由部署时经环境变量下发。
+    # 为什么固定：baseline 与评测必须跑在**同一批输入**上，否则当选手代码存在
+    # 数据相关分支时，两边不可比（baseline 用固定种子量、评测用随机种子）。
+    #
+    # ⚠️ 已知代价（有意接受）：种子固定后，结果页「期望 X，实际 Y」的报错
+    # 可被**逐个套取**——提交全 0 拿到第 0 个期望值，再据此拿第 1 个……
+    # 受 2 分钟提交间隔限制，套完一大题约需数小时。若日后要堵，可改成
+    # 报错不给期望值（见 docs/08）。
+    #
+    # 留空则回退到每次随机（开发/CI 用；此时与 baseline 的输入不一致）。
+    _seeds_raw = os.environ.get('PLATFORM_EVAL_SEEDS') or ''
+    EVAL_SEEDS = [int(x) for x in _seeds_raw.replace(' ', '').split(',') if x] or None
+
     # 是否在提交表为空时导入演示榜单（data/demo_submissions.csv）。
     # 开发与静态演示站需要它；**正式比赛的服务器应关掉**（PLATFORM_SEED_DEMO=0），
     # 否则一旦真实提交被清空，虚拟队伍会重新冒出来。

@@ -29,6 +29,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 与平台一致：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）
 MISS_PENALTY = int(os.environ.get('PLATFORM_MISS_PENALTY') or 15)
 
+# 官方评测用例种子：与 evaluator 取同一处环境变量，确保 baseline 与评测
+# **跑在同一批输入上**。未配置时退回 seed=1000+idx（开发用）。
+_SEEDS_RAW = os.environ.get('PLATFORM_EVAL_SEEDS') or ''
+EVAL_SEEDS = [int(x) for x in _SEEDS_RAW.replace(' ', '').split(',') if x] or None
+
 # 参考解的编译优化级别 —— 用 PLATFORM_REFERENCE_OPT 覆盖。
 #
 # 取 -O0：官方《赛题baseline.md》写明 baseline「不包含任何手动的向量化、算法变换
@@ -69,7 +74,7 @@ def measure_problem(problem_id, spec, asm_path):
         by_size_insn = {}       # 同一规模的裸指令数（供演示数据推导 指令:代价 比例）
         for idx in range(spec['case_count']):
             n = riscv_problems.case_size(spec, idx)
-            seed = 1000 + idx
+            seed = EVAL_SEEDS[idx % len(EVAL_SEEDS)] if EVAL_SEEDS else 1000 + idx
             values = riscv_oracle.make_input(seed, spec, n)
             expected = riscv_oracle.reference(values, spec, n)
 

@@ -90,7 +90,9 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
         shutil.copyfile(code_path, player)
         os.chmod(player, 0o644)
 
-        # 数据点共用同一份随机种子序列，便于按 seed 复现
+        # 官方用例种子：部署时经 PLATFORM_EVAL_SEEDS 下发，跑在固定输入上，
+        # 与 baseline 严格可比；未配置则退回随机（开发用）。
+        official = current_app.config.get('EVAL_SEEDS')
         rng = random.Random(random.randrange(2 ** 31))
         cases = []
         earned = 0.0
@@ -108,7 +110,8 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='skipped', detail='评测总时长超出预算，该数据点未评测')
                 continue
 
-            case_seed = rng.randrange(2 ** 31)
+            case_seed = (official[idx % len(official)] if official
+                         else rng.randrange(2 ** 31))
             case['seed'] = case_seed
             n = case_size(spec, idx)
             case['size'] = n
