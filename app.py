@@ -1,15 +1,18 @@
 import os
 import time
 import json
-from flask import Flask, request, jsonify, render_template, abort
+import secrets
+from flask import (Flask, request, jsonify, render_template, abort, flash,
+                   redirect, url_for)
 
 from flask_sqlalchemy import SQLAlchemy
 from config import Config
 from models import db, Submission
-from tasks import add_task, start_worker
+from tasks import add_task, start_worker, queue_depth, reap_stale_running
 from problems import PROBLEMS, get_problem, problem_ids
-from standings import build_standings
-from auth import bp as auth_bp, csrf, current_user
+from riscv_problems import get_eval_spec
+from standings import build_standings, last_reset_utc
+from auth import bp as auth_bp, csrf, current_user, login_required
 from seed import seed_demo_submissions
 
 app = Flask(__name__)
@@ -25,8 +28,9 @@ with app.app_context():
     if _seeded:
         print(f'[seed] 已从 data/demo_submissions.csv 导入 {_seeded} 条演示提交')
 
-# 启动后台 worker
+# 启动后台 worker，并回收上次运行残留的卡死记录
 start_worker(app)
+reap_stale_running(app)
 
 
 @app.context_processor
@@ -86,7 +90,16 @@ def help_page():
 
 @app.route('/result/<int:submission_id>')
 def result_page(submission_id):
-    return render_template('result.html')
+    submission = db.session.get(Submission, submission_id)
+    if submission is None:
+        abort(404)
+    details = None
+    if submission.details:
+        try:
+            details = json.loads(submission.details)
+        except ValueError:
+            details = None
+    return render_template('result.html', submission=submission, details=details)
 
 
 # ---------------------------------------------------------------------------
@@ -108,39 +121,108 @@ def api_problems():
     ])
 
 
-@app.route('/api/submit', methods=['POST'])
-@csrf.exempt  # 旧接口，P3 接入提交页后再补 CSRF token（见 docs/05 D9）
-def submit():
-    # D9：登录态优先取所属队伍名，未登录/未入队时回退表单 team 字段
-    user = current_user()
-    team_name = user.team.name if (user and user.team) else None
-    if not team_name:
-        team_name = request.form.get('team')
-    problem_id = request.form.get('problem')
-    file = request.files.get('code')
+def _team_quota_used(team_name):
+    """本队当日（自上次 05:00 结算起）的提交次数。"""
+    return Submission.query.filter(
+        Submission.team_name == team_name,
+        Submission.created_at >= last_reset_utc(),
+    ).count()
 
-    if not team_name or not problem_id or file is None:
-        return jsonify({'error': 'Missing fields'}), 400
 
-    # 保存源码
-    filename = f"{team_name}_{problem_id}_{int(time.time())}.py"
+def _create_submission(user, problem_id, file_storage):
+    """校验并落库一次提交。返回 (submission, error_message)。
+
+    按 D9 收紧：必须登录且已入队，队伍名只从登录态取，不再接受表单传入。
+    """
+    problem = get_problem(problem_id)
+    if problem is None:
+        return None, '赛题不存在'
+    spec = get_eval_spec(problem_id)
+    if spec is None:
+        return None, '该题暂未开放提交评测'
+    if user.team is None:
+        return None, '请先创建或加入一支队伍'
+    if file_storage is None or not (file_storage.filename or '').strip():
+        return None, '请选择要提交的源码文件'
+
+    suffix = spec['file_suffix']
+    if not file_storage.filename.lower().endswith(suffix):
+        return None, f'文件类型不符，本赛题请提交 {suffix} 文件'
+
+    data = file_storage.read()
+    max_bytes = app.config['SUBMISSION_MAX_BYTES']
+    if not data:
+        return None, '提交的文件是空的'
+    if len(data) > max_bytes:
+        return None, f'源码过大（{len(data)} 字节，上限 {max_bytes} 字节）'
+
+    quota = app.config['DAILY_QUOTA']
+    used = _team_quota_used(user.team.name)
+    if used >= quota:
+        return None, f'今日提交次数已用尽（{used}/{quota}）'
+
+    if queue_depth() >= app.config['MAX_QUEUE_DEPTH']:
+        return None, '评测队列繁忙，请稍后重试'
+
+    # 文件名不含队名/题名，避免路径穿越与特殊字符问题
+    filename = f"{int(time.time() * 1000)}_{secrets.token_hex(6)}{suffix}"
     save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(save_path)
+    with open(save_path, 'wb') as f:
+        f.write(data)
 
-    # 创建提交记录
     submission = Submission(
-        team_name=team_name,
+        team_name=user.team.name,
         problem_id=problem_id,
         code_path=save_path,
-        status='pending'
+        status='pending',
     )
     db.session.add(submission)
     db.session.commit()
-
-    # 放入队列
     add_task(submission.id)
+    return submission, None
 
-    return jsonify({'submission_id': submission.id, 'status': 'pending'})
+
+@app.route('/submit', methods=['GET', 'POST'])
+@login_required
+def submit_page():
+    user = current_user()
+    requested = request.values.get('problem')
+    problem = get_problem(requested) if requested else None
+    if problem is None or get_eval_spec(problem['id']) is None:
+        # 默认落到第一道可提交的题（problems.py 里存的是 dict，不是对象）
+        problem = next((p for p in PROBLEMS if get_eval_spec(p['id'])), PROBLEMS[0])
+
+    if request.method == 'GET':
+        spec = get_eval_spec(problem['id']) or {}
+        team = user.team
+        return render_template(
+            'submit.html', problem=problem, team=team,
+            suffix=spec.get('file_suffix', '.s'),
+            entry_symbol=spec.get('entry_symbol', 'cnn_entry'),
+            quota={'used': _team_quota_used(team.name) if team else 0,
+                   'limit': app.config['DAILY_QUOTA']},
+        )
+
+    submission, err = _create_submission(user, problem['id'], request.files.get('code'))
+    if err:
+        flash(err, 'error')
+        return redirect(url_for('submit_page', problem=problem['id']))
+    flash(f'已提交 #{submission.id}，正在评测', 'success')
+    return redirect(url_for('result_page', submission_id=submission.id))
+
+
+@app.route('/api/submit', methods=['POST'])
+def submit():
+    """JSON 提交接口。CSRF 由 Flask-WTF 全局校验（X-CSRFToken 头），按 D9 收紧为必须登录。"""
+    user = current_user()
+    if user is None:
+        return jsonify({'error': '请先登录'}), 401
+    problem_id = request.form.get('problem') or (request.get_json(silent=True) or {}).get('problem')
+    submission, err = _create_submission(user, problem_id, request.files.get('code'))
+    if err:
+        status = 429 if '队列繁忙' in err else 400
+        return jsonify({'error': err}), status
+    return jsonify({'submission_id': submission.id, 'status': 'pending'}), 201
 
 
 @app.route('/api/result/<int:submission_id>')

@@ -63,6 +63,7 @@ class Config:
     SUBMISSION_MAX_BYTES = 256 * 1024   # 提交源码大小上限
     MAX_QUEUE_DEPTH = 50          # 评测队列深度上限，超了 /api/submit 返回 429
     WORKER_COUNT = 0              # 0 = 自动（min(2, cpu)）
+    STALE_RUNNING_MINUTES = 15    # 卡在 running 超过这么久就回收为失败
 
     # 沙箱：评测子进程降权到 SANDBOX_UID 并放进独立网络命名空间。
     # 以非 root 运行时把 ENABLE_SANDBOX 关掉即可降级（本地开发）。

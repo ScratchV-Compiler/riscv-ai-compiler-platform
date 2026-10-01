@@ -25,5 +25,15 @@
     </dl>
 
     <pre class="formula" aria-label="示例"><code>{{ p.formula }}</code></pre>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+      {% if p.submittable %}
+      <a class="btn btn-brand btn-sm" href="{{ url_for('submit_page', problem=p.id) }}">去提交</a>
+      <span class="small text-body-secondary">已开放评测</span>
+      {% else %}
+      <span class="vbadge vbadge-pending">暂未开放提交</span>
+      <span class="small text-body-secondary">仅展示题面</span>
+      {% endif %}
+    </div>
   </div>
 </section>
