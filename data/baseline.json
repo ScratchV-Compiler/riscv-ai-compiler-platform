@@ -18,7 +18,7 @@
     "no_relax": true,
     "reference": "reference/add.s"
   },
-  "matmul-4x4": {
+  "matmul": {
     "by_size": {
       "4": 923,
       "8": 5689,

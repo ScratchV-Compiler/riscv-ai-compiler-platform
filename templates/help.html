@@ -104,7 +104,7 @@
         <p>每题 <strong>10 个数据点，规模逐点递增</strong>——不是同一份数据跑十遍：</p>
         <ul>
           <li><span class="mono">add</span> / <span class="mono">reducesum</span>：N = 64, 128, …, 4096</li>
-          <li><span class="mono">matmul-4x4</span>：4×4, 8×8, …, 64×64</li>
+          <li><span class="mono">matmul</span>：4×4, 8×8, …, 64×64</li>
         </ul>
         <p>由小到大覆盖「基本正确性 → 循环开销 → 访存瓶颈」。完整表格见
           <a href="{{ url_for('problems_page') }}">赛题页</a>。</p>
@@ -120,7 +120,7 @@
             （该核只有一个填充槽），结合实测 IPC≈0.75，取 α = 15。</dd>
           <dt>数据点与分值</dt>
           <dd>每题 10 个数据点，每个独立判定、独立给分。
-            <span class="mono">add</span> 与 <span class="mono">matmul-4x4</span> 每点 3 分（各 30 分），
+            <span class="mono">add</span> 与 <span class="mono">matmul</span> 每点 3 分（各 30 分），
             <span class="mono">reducesum</span> 每点 4 分（40 分），三题合计 <strong>100 分</strong>。</dd>
           <dt>单点得分</dt>
           <dd>做对的点得分 = 分值 × min(1, <strong>该点全场最优代价</strong> ÷ 本队该点代价)。

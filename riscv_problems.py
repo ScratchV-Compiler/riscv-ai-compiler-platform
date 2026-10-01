@@ -61,7 +61,7 @@ EVAL_SPECS = {
         'title': '逐元素相加',
         'note': '输入 2N 个 int32（前 N 个 A，后 N 个 B），输出 N 个；C[i] = A[i] + B[i]',
     },
-    'matmul-4x4': {
+    'matmul': {
         'kind': 'riscv-asm',
         'kernel': 'matmul',
         'entry_symbol': 'cnn_entry',

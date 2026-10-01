@@ -20,7 +20,7 @@
     <dl class="spec">
       <dt>数据点与分值</dt>
       <dd>每题 <strong>10 个数据点</strong>，每个数据点独立判定、独立给分：
-        <span class="mono">add</span> 与 <span class="mono">matmul-4x4</span> 每点 3 分（各 30 分），
+        <span class="mono">add</span> 与 <span class="mono">matmul</span> 每点 3 分（各 30 分），
         <span class="mono">reducesum</span> 每点 4 分（40 分），三题合计 <strong>100 分</strong>。</dd>
       <dt>正确性</dt>
       <dd>平台在 qemu-riscv32 上真实执行你的汇编，把该数据点的输出与官方参考实现比对，

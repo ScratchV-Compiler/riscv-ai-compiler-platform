@@ -5,9 +5,9 @@
 三道 RISC-V 题，都跑在同一套裸机 ABI 上（a0=输入、a1=输出、int32 Q16.16，
 入口符号 `cnn_entry`）。每题 **10 个数据点**，逐点独立计分：
 
-    add         10 × 3 分 = 30
-    matmul-4x4  10 × 3 分 = 30
-    reducesum   10 × 4 分 = 40
+    add        10 × 3 分 = 30
+    matmul     10 × 3 分 = 30
+    reducesum  10 × 4 分 = 40
     ────────────────────────────
                         合计 100
 
@@ -55,7 +55,7 @@ PROBLEMS = [
         ),
     },
     {
-        "id": "matmul-4x4",
+        "id": "matmul",
         "no": 2,
         "code": "RV 2",
         "submittable": True,

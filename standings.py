@@ -139,7 +139,7 @@ def build_standings(problem="all", stage=1):
         if vals:
             best_by_size[n] = min(vals)
 
-    # 列头显示标题而不是 id —— id 形如 matmul-4x4，会与「定点矩阵乘」的题名对不上
+    # 列头显示标题而不是 id —— id 形如 matmul，会与「定点矩阵乘」的题名对不上
     column_labels = {}
     for pid in display_cols:
         _p = get_problem(pid)
