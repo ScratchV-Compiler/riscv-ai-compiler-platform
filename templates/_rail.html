@@ -21,10 +21,11 @@
       <li><span class="k">数据点</span><span class="v">每题 10 个</span></li>
       <li><span class="k">单点得分</span><span class="v">分值 × 基准 ÷ 本队</span></li>
       <li><span class="k">三题分配</span><span class="v">30 / 30 / 40</span></li>
-      <li><span class="k">计分口径</span><span class="v">动态指令数</span></li>
+      <li><span class="k">基准</span><span class="v">全场最优</span></li>
+      <li><span class="k">评测指标</span><span class="v">指令数 + 15×L1未命中</span></li>
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
-      每个数据点独立判定与计分，做错只丢该点的分。基准为官方参考解的指令数。详见
+      每个数据点独立判定与计分，做错只丢该点的分。基准取全场该数据点的最优代价，因此会随他人成绩浮动。详见
       <a href="{{ url_for('help_page') }}">帮助</a>。
     </p>
   </div>
