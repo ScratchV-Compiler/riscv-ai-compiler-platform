@@ -1,0 +1,12 @@
+{
+  "matmul-4x4": {
+    "baseline_instructions": 360,
+    "reference": "reference/matmul.s",
+    "measured_counts": [
+      360,
+      360
+    ],
+    "march": "rv32im",
+    "no_relax": true
+  }
+}
