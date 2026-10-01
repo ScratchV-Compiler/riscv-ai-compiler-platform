@@ -26,10 +26,10 @@ db.init_app(app)
 csrf.init_app(app)
 app.register_blueprint(auth_bp)
 
-# 创建数据库表，并在表为空时导入 demo 数据（方案 B）
+# 创建数据库表；表为空且开关打开时导入 demo 数据（方案 B）
 with app.app_context():
     db.create_all()
-    _seeded = seed_demo_submissions()
+    _seeded = seed_demo_submissions() if app.config['SEED_DEMO'] else 0
     if _seeded:
         print(f'[seed] 已从 data/demo_submissions.csv 导入 {_seeded} 条演示提交', flush=True)
 

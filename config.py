@@ -83,6 +83,11 @@ class Config:
     # 世界可写目录遮蔽成空 tmpfs（否则 guest 能往宿主 /tmp 里留文件）。
     EVAL_WORK_ROOT = os.environ.get('PLATFORM_EVAL_WORK_ROOT') or '/var/lib/riscv-eval'
 
+    # 是否在提交表为空时导入演示榜单（data/demo_submissions.csv）。
+    # 开发与静态演示站需要它；**正式比赛的服务器应关掉**（PLATFORM_SEED_DEMO=0），
+    # 否则一旦真实提交被清空，虚拟队伍会重新冒出来。
+    SEED_DEMO = os.environ.get('PLATFORM_SEED_DEMO', '1') != '0'
+
     # CSRF（Flask-WTF）
     WTF_CSRF_TIME_LIMIT = None                       # 与登录会话同生命周期
     WTF_CSRF_HEADERS = ['X-CSRFToken', 'X-CSRF-Token']
