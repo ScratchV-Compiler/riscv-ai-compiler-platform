@@ -1,0 +1,51 @@
+name: Deploy static demo to GitHub Pages
+
+# 每次推送到默认分支即自动重建静态站并发布；也可在 Actions 页手动触发
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          # Werkzeug 必须钉在 2.3.x：3.x 移除了 __version__，Flask 2.3.2 的 test client 会直接抛 AttributeError
+          python -m pip install -r requirements.txt "Werkzeug==2.3.7"
+
+      - name: 导出静态站（tools/export_static.py）
+        run: python tools/export_static.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -13,3 +13,6 @@ test_data/
 .DS_Store
 .idea/
 .vscode/
+
+# 静态站构建产物（由 tools/export_static.py 生成）
+dist/
