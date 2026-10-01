@@ -29,8 +29,12 @@
           <span class="prob-sum d-block">{{ p.summary }}</span>
         </span>
         <span class="prob-side">
+          {% set spec = eval_spec(p.id) %}
           <span class="badge-id">{{ p.id }}</span>
-          <span class="text-body-secondary small">满分 100</span>
+          {# 每题满分各不相同（30/30/40）；100 是三题**合计**，不能写在这里 #}
+          <span class="text-body-secondary small">
+            {%- if spec %}满分 {{ spec.full_score }}{% endif -%}
+          </span>
         </span>
       </a>
     </li>
