@@ -153,7 +153,9 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='skipped', detail='评测总时长超出预算，该数据点未数指令')
                 continue
             trace = os.path.join(work, f'trace_{idx}.log')
+            cfg.pop('_cache_stats', None)          # 清掉上一轮的
             count, truncated = riscv_runner.count_instructions(elf, cfg, work, trace)
+            stats = riscv_runner.take_cache_stats(cfg)
             if truncated:
                 case.update(verdict='timeout', detail='指令数超出上限')
                 continue
@@ -166,6 +168,12 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
             earned += pts
             case.update(verdict='accepted', instructions=count, ratio=ratio,
                         points=pts)
+            # 访存统计只作诊断，暂不参与计分（见 docs/08：当前规模下访存非瓶颈）
+            if stats:
+                c0 = stats[-1]
+                case['d_miss'] = c0['d_miss']
+                case['d_access'] = c0['d_access']
+                case['d_hitrate'] = c0['d_hitrate']
 
         score = round(earned, 2)
         passed = sum(1 for c in cases if c['verdict'] == 'accepted')
