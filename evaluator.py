@@ -133,7 +133,11 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 case.update(verdict='timeout', detail='运行超时')
                 continue
             if rc < 0:
-                case.update(verdict='runtime_error', detail=_signal_message(rc))
+                # SIGXCPU（-24）是"超出 CPU 限额"，语义上就是超时——
+                # 否则墙钟超时与 CPU 限额哪个先生效，会决定它被判成
+                # timeout 还是 runtime_error，不稳定。
+                v = 'timeout' if rc == -24 else 'runtime_error'
+                case.update(verdict=v, detail=_signal_message(rc))
                 continue
             if rc != 0:
                 case.update(verdict='runtime_error', detail=f'退出码 {rc}')
