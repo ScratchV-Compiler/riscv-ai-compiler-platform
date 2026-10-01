@@ -311,7 +311,11 @@ def create_team(user, name):
         return None, '队名需为 1–60 个字符'
     if user.team:
         return None, '你已加入一支队伍，每人只能加入一支队伍'
-    if Team.query.filter_by(name=name).first():
+    taken = Team.query.filter_by(name=name).first()
+    if taken is not None:
+        if taken.disbanded_at is not None and taken.captain_id == user.id:
+            return None, (f'「{name}」是你此前解散的队伍——'
+                          f'若想继续用它，请用「恢复队伍」，队名与历史都会保留')
         return None, '该队名已被占用，换一个试试'
     team = Team(name=name, invite_code=_gen_invite_code(), captain_id=user.id)
     db.session.add(team)
@@ -355,6 +359,40 @@ def leave_team(user):
         db.session.commit()
         return team, None
     db.session.delete(membership)
+    db.session.commit()
+    return team, None
+
+
+def restorable_team(user):
+    """该用户可以恢复的队伍：他曾任队长、且已被解散的队（取最近一个）。
+
+    独苗队长退队时队伍会被标记解散（`disbanded_at`）而**不是删除**，
+    所以队伍行还在——但邀请码作废、队名也仍占着（DB 有 unique 约束）。
+    没有恢复入口的话，这个人就被永久挡在自己的队名之外了。
+    """
+    if user.team:
+        return None
+    return (Team.query
+            .filter(Team.captain_id == user.id, Team.disbanded_at.isnot(None))
+            .order_by(Team.disbanded_at.desc())
+            .first())
+
+
+def restore_team(user):
+    """恢复一个已解散的队伍。返回 (team, err)。
+
+    - 清掉 disbanded_at，队伍重新可用
+    - **邀请码换新的**：旧码已经废了，且可能已泄露给（前）队员
+    - 把该用户重新加回成员
+    """
+    if user.team:
+        return None, '你已在一支队伍中'
+    team = restorable_team(user)
+    if team is None:
+        return None, '没有可恢复的队伍'
+    team.disbanded_at = None
+    team.invite_code = _gen_invite_code()
+    db.session.add(TeamMember(user_id=user.id, team_id=team.id))
     db.session.commit()
     return team, None
 
@@ -574,7 +612,19 @@ def team_join_page():
     user = current_user()
     if user.team:
         return redirect(url_for('auth.team_page'))
-    return render_template('team_join.html', user=user)
+    return render_template('team_join.html', user=user,
+                           restorable=restorable_team(user))
+
+
+@bp.route('/team/restore', methods=['POST'])
+@login_required
+def team_restore_page():
+    team, err = restore_team(current_user())
+    if err:
+        flash(err, 'error')
+        return redirect(url_for('auth.team_join_page'))
+    flash(f'已恢复队伍「{team.name}」，邀请码已更新为 {team.invite_code}', 'success')
+    return redirect(url_for('auth.team_page'))
 
 
 @bp.route('/team/create', methods=['POST'])
