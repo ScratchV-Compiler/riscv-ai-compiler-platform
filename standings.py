@@ -5,15 +5,19 @@
 刻意与 evaluator.py / tasks.py 解耦：这里只做"把库里已有成绩聚合成榜单"，
 不参与编译、仿真与计分口径实现。
 口径（docs/01-前端设计方案.md 5.3）：
-- 单题得分 = 100 ×（baseline 指令数 ÷ 本队指令数），本处以库中已有 score 为准
+- **动态基准**：基准 = 全场该数据点的最优（最小）指令数；
+  某队得分 = 基准 ÷ 本队成绩 × 该点满分（对齐官方策划案口径，见 scoring.py）
+- 分数在**读取时**现算——基准随全场水平浮动，写死在评测结果里会造成
+  「先提交的拿满分、后提交的同样代码拿低分」
 - 当日最优：同一队同一题取当日内最大值
-- 总分 = 各题得分之和（当前 1 题，满分 100）
+- 总分 = 各题得分之和（三题满分 100）
 - 每日 05:00（UTC+8）为结算点与配额重置点；榜单实时展示
 """
 from datetime import datetime, timedelta, timezone
 
 from models import Submission
 from problems import problem_ids
+from scoring import build_score_table
 
 UTC8 = timezone(timedelta(hours=8))
 RESET_HOUR = 5
@@ -55,8 +59,13 @@ def build_standings(problem="all", stage=1):
     if only:
         query = query.filter_by(problem_id=only)
 
+    subs = query.all()
+    # 动态基准：分数在**读取时**用当前全场最优现算（见 scoring.py 的说明）。
+    # 没有新格式原始数据的提交（旧记录）退回库里存的 score。
+    live, best = build_score_table(subs)
+
     teams = {}
-    for sub in query.all():
+    for sub in subs:
         row = teams.setdefault(
             sub.team_name,
             {"team": sub.team_name, "scores": {}, "count": 0, "last": None},
@@ -65,8 +74,9 @@ def build_standings(problem="all", stage=1):
         if row["last"] is None or sub.created_at > row["last"]:
             row["last"] = sub.created_at
         if sub.problem_id in scoring_cols:
+            score = live.get(sub.id, float(sub.score or 0.0))
             prev = row["scores"].get(sub.problem_id, 0.0)
-            row["scores"][sub.problem_id] = max(prev, float(sub.score or 0.0))
+            row["scores"][sub.problem_id] = max(prev, score)
 
     rows = []
     for row in teams.values():

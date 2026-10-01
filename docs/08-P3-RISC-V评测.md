@@ -133,7 +133,7 @@ wrapper + 编译 + 单步计数流水线，产出 `data/baseline.json`。
 
 | 方案 | 状态 |
 |---|---|
-| `llvm-mca-18` | ❌ 无 RISC-V 调度模型（实测报错 `unable to find instruction-level scheduling information for target triple 'riscv32'`） |
+| `llvm-mca-18` | ⚠️ **`generic-rv32` 无调度模型**（报错 `unable to find instruction-level scheduling information`），**但具体型号有**：`sifive-e76` / `sifive-e31` / `sifive-u74` / `rocket` / `rv32im` 实测均可用。不过它是**静态直线分析**——不认循环次数、不建模缓存，无法替代动态计数 |
 | qemu `-plugin`（libinsn） | ❌ 本机只有 `qemu-user` 包，无 `/usr/lib/qemu/`，无插件库 |
 | 静态数汇编行数 | ❌ 不含循环，会被"少写指令但更慢"钻空子 |
 | **`qemu-riscv32 -singlestep -d exec -D trace.log`** | ✅ 数 `^Trace` 行数 |

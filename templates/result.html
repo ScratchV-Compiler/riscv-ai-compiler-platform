@@ -59,13 +59,18 @@
       <script>setTimeout(function () { location.reload(); }, 2500);</script>
     {% else %}
       <p class="mb-2">
-        {% if details and details.score is not none %}
-        <strong>得分：{{ '%.2f'|format(details.score) }}
-          {%- if details.full_score %} / {{ details.full_score }}{% endif %}</strong>
+        {% set shown = live_score if live_score is not none else (details.score if details else none) %}
+        {% if shown is not none %}
+        <strong>得分：{{ '%.2f'|format(shown) }}
+          {%- if details and details.full_score %} / {{ details.full_score }}{% endif %}</strong>
         {% endif %}
         {% if details and details.message %}
         <span class="text-body-secondary">— {{ details.message }}</span>
         {% endif %}
+      </p>
+      <p class="form-hint">
+        得分为<strong>动态基准</strong>口径：基准 = 当前全场该数据点的最优成绩，
+        因此会随其他队伍的成绩浮动（对齐官方策划案「以全场最优为基准」）。
       </p>
       {% if details and details.cases %}
       <dl class="spec">

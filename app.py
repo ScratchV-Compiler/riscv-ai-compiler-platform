@@ -13,6 +13,7 @@ from problems import PROBLEMS, get_problem, problem_ids, submittable_problems
 from riscv_problems import (get_eval_spec, EVAL_SPECS, case_elements,
                             case_label, case_purpose)
 from standings import build_standings, last_reset_utc
+from scoring import build_score_table, parse_details
 from auth import bp as auth_bp, csrf, current_user, login_required
 from seed import seed_demo_submissions
 
@@ -105,13 +106,21 @@ def result_page(submission_id):
     submission = db.session.get(Submission, submission_id)
     if submission is None:
         abort(404)
-    details = None
-    if submission.details:
-        try:
-            details = json.loads(submission.details)
-        except ValueError:
-            details = None
-    return render_template('result.html', submission=submission, details=details)
+    details = parse_details(submission)
+
+    # 动态基准：与榜单用同一口径现算，避免结果页与榜单显示两个数。
+    # 基准 = 当前窗口内全场最优。
+    live_score = None
+    if details:
+        window = Submission.query.filter(
+            Submission.created_at >= last_reset_utc(),
+            Submission.status.in_(('success',)),
+        ).all()
+        table, _best = build_score_table(window + [submission])
+        live_score = table.get(submission.id)
+
+    return render_template('result.html', submission=submission, details=details,
+                           live_score=live_score)
 
 
 # ---------------------------------------------------------------------------
