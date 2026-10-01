@@ -7,6 +7,28 @@
   <p class="lede">{{ user.name }}，你还没有加入队伍。创建一个新队伍，或用队长给你的邀请码加入。</p>
 </div>
 
+{% if restorable %}
+{# 他曾是某解散队的队长：队伍行还在（没删），但邀请码作废、队名仍占着。
+   没有这个入口的话，这个人就被永久挡在自己的队名之外。 #}
+<section class="panel">
+  <div class="panel-head">
+    <h2>恢复之前的队伍</h2>
+    <span class="vbadge vbadge-warn">已解散</span>
+  </div>
+  <div class="panel-body">
+    <p>
+      你此前解散过队伍 <strong>{{ restorable.name }}</strong>。
+      恢复后队名、队伍历史都会保留，<strong>邀请码会换成新的</strong>
+      （旧码已作废，且可能已给过前队员）。
+    </p>
+    <form method="post" action="{{ url_for('auth.team_restore_page') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-brand" type="submit">恢复「{{ restorable.name }}」</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
 <div class="row g-4">
   <div class="col-12 col-md-6">
     <section class="panel h-100">

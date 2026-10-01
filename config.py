@@ -83,6 +83,24 @@ class Config:
     # 世界可写目录遮蔽成空 tmpfs（否则 guest 能往宿主 /tmp 里留文件）。
     EVAL_WORK_ROOT = os.environ.get('PLATFORM_EVAL_WORK_ROOT') or '/var/lib/riscv-eval'
 
+    # ---- 官方评测用例种子 ----
+    # 逗号分隔的整数列表，**不写进仓库**，由部署时经环境变量下发。
+    # 为什么固定：baseline 与评测必须跑在**同一批输入**上，否则当选手代码存在
+    # 数据相关分支时，两边不可比（baseline 用固定种子量、评测用随机种子）。
+    #
+    # 种子固定后，结果页原本会回显「期望 X，实际 Y」——那会被逐个套取
+    # （提交全 0 拿第 0 个期望值，再据此拿第 1 个……）。因此结果比对
+    # **只报位置、不报数值**（见 riscv_oracle.check_output 与 docs/08）。
+    #
+    # 留空则回退到每次随机（开发/CI 用；此时与 baseline 的输入不一致）。
+    _seeds_raw = os.environ.get('PLATFORM_EVAL_SEEDS') or ''
+    EVAL_SEEDS = [int(x) for x in _seeds_raw.replace(' ', '').split(',') if x] or None
+
+    # 是否在提交表为空时导入演示榜单（data/demo_submissions.csv）。
+    # 开发与静态演示站需要它；**正式比赛的服务器应关掉**（PLATFORM_SEED_DEMO=0），
+    # 否则一旦真实提交被清空，虚拟队伍会重新冒出来。
+    SEED_DEMO = os.environ.get('PLATFORM_SEED_DEMO', '1') != '0'
+
     # CSRF（Flask-WTF）
     WTF_CSRF_TIME_LIMIT = None                       # 与登录会话同生命周期
     WTF_CSRF_HEADERS = ['X-CSRFToken', 'X-CSRF-Token']

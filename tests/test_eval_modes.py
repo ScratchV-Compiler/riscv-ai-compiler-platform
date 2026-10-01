@@ -5,6 +5,7 @@
 用**临时库**，不碰 platform.db。
 """
 import os
+import re
 import sys
 import tempfile
 import io
@@ -101,13 +102,27 @@ with app.app_context():
         _, d = run_evaluation(2, 'team-a', 'matmul', path)
         check(f'{label} → {want}', d['verdict'] == want, f"verdict={d['verdict']} msg={d['message'][:60]}")
 
+    # ---- 2b. 关键不变量：结果不比对错，绝不回显「期望/实际」数值 ----
+    # 评测输入是**固定种子**，一旦回显期望值就能被逐个套取：
+    # 提交全 0 拿第 0 个期望值，据此拿第 1 个……迭代即得该数据点全部答案。
+    # 所以只报位置、不报数值。这条是安全不变量，必须防回归。
+    _, d = run_evaluation(2, 'team-a', 'matmul', write_src('leak.s', SRC_ZEROS))
+    bad = [c for c in d['cases'] if c['verdict'] != 'accepted']
+    detail = bad[0]['detail'] if bad else ''
+    check('失败信息不含「期望值」', not re.search(r'期望\s*-?\d', detail), detail)
+    check('失败信息不含「实际值」', not re.search(r'实际\s*-?\d', detail), detail)
+    check('失败信息仍指明出错位置（便于选手自查）',
+          '第' in detail and '个' in detail, detail)
+
     # ---- 3. 非 RISC-V 题（LeetCode 三道）应判 unsupported ----
     _, d = run_evaluation(3, 'team-a', 'add-two-numbers', os.path.join(ROOT, 'reference/matmul.s'))
     check('LeetCode 题 → unsupported', d['verdict'] == 'unsupported', d['message'])
 
-    # ---- 4. 关键：硬编码答案必须失败（随机 seed 的意义）----
-    # 规模分级后本题有 10 个数据点（4×4 → 64×64）。这里把小数据点（N=4）的答案
-    # 写死进汇编：即便 N=4 那点侥幸命中，其余 9 个规模也必然失败。
+    # ---- 4. 关键：硬编码答案必须失败 ----
+    # 现在评测用**固定种子**（与 baseline 同源），防写死答案靠的是两层：
+    #   ① 种子不公开（在服务器环境变量里，不进仓库）；
+    #   ② **规模分级**——写死一个规模的答案，其余 9 个必然失败。
+    # 下面把 N=4 那点的答案写死进汇编来验证第 ② 层。
     spec = riscv_problems.get_eval_spec('matmul')
     N0 = spec['data_point_sizes'][0]                 # 4
     fixed_vals = riscv_oracle.make_input(1, spec, N0)
@@ -119,8 +134,8 @@ with app.app_context():
           d['passed_cases'] <= 1 and d['score'] < spec['full_score'],
           f"verdict={d['verdict']} passed={d['passed_cases']}/{d['total_cases']} score={d['score']}")
 
-    # 反证：把输入固定成 seed=1 也不过多蒙对一个小数据点——规模分级本身
-    # 让"写死答案"这条路彻底走不通（这是规模分级带来的额外好处）。
+    # 反证：即便让输入完全固定（最坏情况，等于种子泄露），写死一个规模的答案
+    # 仍只能过那一个点——规模分级这一层独立成立，不依赖种子保密。
     orig = riscv_oracle.make_input
     riscv_oracle.make_input = lambda seed, s, n: orig(1, s, n)
     _, d2 = run_evaluation(5, 'team-a', 'matmul', hardcoded)

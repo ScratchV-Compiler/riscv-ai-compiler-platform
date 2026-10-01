@@ -26,8 +26,8 @@ sys.path.insert(0, ROOT)
 import riscv_problems as RP          # noqa: E402
 
 BASELINE = os.path.join(ROOT, 'data', 'baseline.json')
-# 换指标前的纯指令数 baseline，用来还原「指令数 : cost」的比例，使演示数据自洽
-OLD_BASELINE = '/tmp/baseline_instr_metric.json'
+# 指令数/cost 的比例直接从 baseline.json 的 by_size_instructions 推——
+# 早先依赖 /tmp 里一个陈旧文件，既是隐患、换编译级别后还会算错
 OUT = os.path.join(ROOT, 'data', 'demo_submissions.csv')
 
 MISS_PENALTY = 15
@@ -47,20 +47,18 @@ TEAMS = [
 
 
 def load_ratio(pid):
-    """参考解的 指令数/cost 比例 —— 用来把 cost 拆回 指令数 与 未命中。"""
+    """返回 (各规模 baseline 代价, 各规模的 指令数/代价 比例)。
+
+    比例用来把 cost 拆回「指令数 + 15×未命中」，使演示数据自洽
+    （演示数据里 cost 必须恰好等于 instructions + 15×d_miss）。
+    """
     with open(BASELINE, encoding='utf-8') as f:
-        new = json.load(f)
-    ratio = {}
-    try:
-        with open(OLD_BASELINE, encoding='utf-8') as f:
-            old = json.load(f)
-        for n, cost in new[pid]['by_size'].items():
-            o = old[pid]['by_size'].get(n)
-            ratio[int(n)] = (o / cost) if o else 0.9
-    except (OSError, KeyError, ValueError):
-        for n in new[pid]['by_size']:
-            ratio[int(n)] = 0.9
-    return {n: new[pid]['by_size'][str(n)] for n in (int(x) for x in new[pid]['by_size'])}, ratio
+        data = json.load(f)
+    entry = data[pid]
+    base = {int(n): c for n, c in entry['by_size'].items()}
+    insn = {int(n): c for n, c in entry.get('by_size_instructions', {}).items()}
+    ratio = {n: (insn.get(n, 0) / c if c else 0.9) for n, c in base.items()}
+    return base, ratio
 
 
 def make_details(pid, spec, base, ratio, eff_small, eff_large, rng):

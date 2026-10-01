@@ -7,51 +7,110 @@
 	.type	cnn_entry,@function
 cnn_entry:                              # @cnn_entry
 # %bb.0:
-	blez	a2, .LBB0_7
-# %bb.1:
-	li	a3, 0
-	mul	a4, a2, a2
-	slli	a4, a4, 2
-	add	a4, a0, a4
-	slli	a5, a2, 2
-.LBB0_2:                                # =>This Loop Header: Depth=1
+	addi	sp, sp, -48
+	sw	ra, 44(sp)                      # 4-byte Folded Spill
+	sw	s0, 40(sp)                      # 4-byte Folded Spill
+	addi	s0, sp, 48
+	sw	a0, -12(s0)
+	sw	a1, -16(s0)
+	sw	a2, -20(s0)
+	lw	a0, -12(s0)
+	sw	a0, -24(s0)
+	lw	a0, -12(s0)
+	lw	a1, -20(s0)
+	mul	a1, a1, a1
+	slli	a1, a1, 2
+	add	a0, a0, a1
+	sw	a0, -28(s0)
+	li	a0, 0
+	sw	a0, -32(s0)
+	j	.LBB0_1
+.LBB0_1:                                # =>This Loop Header: Depth=1
                                         #     Child Loop BB0_3 Depth 2
-                                        #       Child Loop BB0_4 Depth 3
-	li	a6, 0
-	mul	a7, a3, a2
-	mv	t0, a4
-.LBB0_3:                                #   Parent Loop BB0_2 Depth=1
+                                        #       Child Loop BB0_5 Depth 3
+	lw	a0, -32(s0)
+	lw	a1, -20(s0)
+	bge	a0, a1, .LBB0_12
+	j	.LBB0_2
+.LBB0_2:                                #   in Loop: Header=BB0_1 Depth=1
+	li	a0, 0
+	sw	a0, -36(s0)
+	j	.LBB0_3
+.LBB0_3:                                #   Parent Loop BB0_1 Depth=1
                                         # =>  This Loop Header: Depth=2
-                                        #       Child Loop BB0_4 Depth 3
-	li	t1, 0
-	mv	t2, a0
-	mv	t3, t0
-	mv	t4, a2
-.LBB0_4:                                #   Parent Loop BB0_2 Depth=1
+                                        #       Child Loop BB0_5 Depth 3
+	lw	a0, -36(s0)
+	lw	a1, -20(s0)
+	bge	a0, a1, .LBB0_10
+	j	.LBB0_4
+.LBB0_4:                                #   in Loop: Header=BB0_3 Depth=2
+	li	a0, 0
+	sw	a0, -40(s0)
+	sw	a0, -44(s0)
+	j	.LBB0_5
+.LBB0_5:                                #   Parent Loop BB0_1 Depth=1
                                         #     Parent Loop BB0_3 Depth=2
                                         # =>    This Inner Loop Header: Depth=3
-	lw	t5, 0(t2)
-	lw	t6, 0(t3)
-	mul	t5, t6, t5
-	srai	t5, t5, 16
-	add	t1, t5, t1
-	addi	t4, t4, -1
-	add	t3, t3, a5
-	addi	t2, t2, 4
-	bnez	t4, .LBB0_4
-# %bb.5:                                #   in Loop: Header=BB0_3 Depth=2
-	add	t2, a6, a7
-	slli	t2, t2, 2
-	add	t2, a1, t2
-	sw	t1, 0(t2)
-	addi	a6, a6, 1
-	addi	t0, t0, 4
-	bne	a6, a2, .LBB0_3
-# %bb.6:                                #   in Loop: Header=BB0_2 Depth=1
-	addi	a3, a3, 1
-	add	a0, a0, a5
-	bne	a3, a2, .LBB0_2
-.LBB0_7:
+	lw	a0, -44(s0)
+	lw	a1, -20(s0)
+	bge	a0, a1, .LBB0_8
+	j	.LBB0_6
+.LBB0_6:                                #   in Loop: Header=BB0_5 Depth=3
+	lw	a0, -24(s0)
+	lw	a1, -32(s0)
+	lw	a3, -20(s0)
+	mul	a1, a1, a3
+	lw	a2, -44(s0)
+	add	a1, a1, a2
+	slli	a1, a1, 2
+	add	a0, a0, a1
+	lw	a0, 0(a0)
+	lw	a1, -28(s0)
+	mul	a2, a2, a3
+	lw	a3, -36(s0)
+	add	a2, a2, a3
+	slli	a2, a2, 2
+	add	a1, a1, a2
+	lw	a1, 0(a1)
+	mul	a0, a0, a1
+	srai	a1, a0, 16
+	lw	a0, -40(s0)
+	add	a0, a0, a1
+	sw	a0, -40(s0)
+	j	.LBB0_7
+.LBB0_7:                                #   in Loop: Header=BB0_5 Depth=3
+	lw	a0, -44(s0)
+	addi	a0, a0, 1
+	sw	a0, -44(s0)
+	j	.LBB0_5
+.LBB0_8:                                #   in Loop: Header=BB0_3 Depth=2
+	lw	a0, -40(s0)
+	lw	a1, -16(s0)
+	lw	a2, -32(s0)
+	lw	a3, -20(s0)
+	mul	a2, a2, a3
+	lw	a3, -36(s0)
+	add	a2, a2, a3
+	slli	a2, a2, 2
+	add	a1, a1, a2
+	sw	a0, 0(a1)
+	j	.LBB0_9
+.LBB0_9:                                #   in Loop: Header=BB0_3 Depth=2
+	lw	a0, -36(s0)
+	addi	a0, a0, 1
+	sw	a0, -36(s0)
+	j	.LBB0_3
+.LBB0_10:                               #   in Loop: Header=BB0_1 Depth=1
+	j	.LBB0_11
+.LBB0_11:                               #   in Loop: Header=BB0_1 Depth=1
+	lw	a0, -32(s0)
+	addi	a0, a0, 1
+	sw	a0, -32(s0)
+	j	.LBB0_1
+.LBB0_12:
+	lw	ra, 44(sp)                      # 4-byte Folded Reload
+	lw	s0, 40(sp)                      # 4-byte Folded Reload
+	addi	sp, sp, 48
 	ret
 .Lfunc_end0:
 	.size	cnn_entry, .Lfunc_end0-cnn_entry

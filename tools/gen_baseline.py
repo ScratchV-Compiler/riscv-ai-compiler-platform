@@ -29,6 +29,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 与平台一致：cost = 指令数 + α × L1 未命中（α 见 config.MISS_PENALTY）
 MISS_PENALTY = int(os.environ.get('PLATFORM_MISS_PENALTY') or 15)
 
+# 官方评测用例种子：与 evaluator 取同一处环境变量，确保 baseline 与评测
+# **跑在同一批输入上**。未配置时退回 seed=1000+idx（开发用）。
+_SEEDS_RAW = os.environ.get('PLATFORM_EVAL_SEEDS') or ''
+EVAL_SEEDS = [int(x) for x in _SEEDS_RAW.replace(' ', '').split(',') if x] or None
+
+# 参考解的编译优化级别 —— 用 PLATFORM_REFERENCE_OPT 覆盖。
+#
+# 取 -O0：官方《赛题baseline.md》写明 baseline「不包含任何手动的向量化、算法变换
+# 或数据流优化」，并要求选手**在此基础上超越**。本仓进一步连编译器的自动优化都
+# 不开，让 baseline 成为真正的**朴素起点**。
+#
+# 代价：从 -O2 降到 -O0，参考解会慢 2.3~3.4 倍（实测 add 2.33× / matmul 3.28× /
+# reducesum 3.39×）。所谓「开优化就能白拿」的部分现在留给选手。
+REFERENCE_OPT = os.environ.get('PLATFORM_REFERENCE_OPT') or '-O0'
+
 # 与评测一致；这里直接给常量，避免在 app context 外依赖 current_app
 CFG = {
     'compile_timeout': 90, 'per_case_timeout': 60, 'count_timeout': 300,
@@ -42,7 +57,7 @@ def build_reference_asm(source_rel):
     asm = os.path.splitext(src)[0] + '.s'
     subprocess.run([
         'clang', '--target=riscv32-linux-gnu', '-march=rv32im', '-mabi=ilp32',
-        '-O2', '-S', src, '-o', asm,
+        REFERENCE_OPT, '-fno-builtin', '-S', src, '-o', asm,
     ], check=True)
     return asm
 
@@ -56,9 +71,10 @@ def measure_problem(problem_id, spec, asm_path):
         os.chmod(player, 0o644)
 
         by_size = {}
+        by_size_insn = {}       # 同一规模的裸指令数（供演示数据推导 指令:代价 比例）
         for idx in range(spec['case_count']):
             n = riscv_problems.case_size(spec, idx)
-            seed = 1000 + idx
+            seed = EVAL_SEEDS[idx % len(EVAL_SEEDS)] if EVAL_SEEDS else 1000 + idx
             values = riscv_oracle.make_input(seed, spec, n)
             expected = riscv_oracle.reference(values, spec, n)
 
@@ -85,9 +101,10 @@ def measure_problem(problem_id, spec, asm_path):
             n_miss = (stats[-1]['d_miss'] + stats[-1]['i_miss']) if stats else 0
             cost = count + MISS_PENALTY * n_miss
             by_size[n] = cost
+            by_size_insn[n] = count
             print(f'    N={n:<6} → 指令 {count:>9} + {MISS_PENALTY}×{n_miss:<6} '
                   f'= 代价 {cost:>10}')
-        return by_size
+        return by_size, by_size_insn
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -104,13 +121,14 @@ def main():
     for problem_id, spec in riscv_problems.EVAL_SPECS.items():
         print(f'{problem_id}:')
         asm = build_reference_asm(spec['reference'])
-        by_size = measure_problem(problem_id, spec, asm)
+        by_size, by_insn = measure_problem(problem_id, spec, asm)
         data[problem_id] = {
             'by_size': by_size,                 # 每点 baseline 是 **cost**，不是裸指令数
+            'by_size_instructions': by_insn,
             'metric': 'cost = instructions + %d * l1_misses' % MISS_PENALTY,
             'miss_penalty': MISS_PENALTY,
             'reference': os.path.relpath(asm, ROOT),
-            'march': 'rv32im', 'no_relax': True,
+            'march': 'rv32im', 'no_relax': True, 'opt': REFERENCE_OPT,
         }
 
     with open(out_path, 'w', encoding='utf-8') as f:
