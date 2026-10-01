@@ -1,0 +1,15 @@
+{% if ok %}
+{% set sub = submission %}
+<div class="notice notice-ok" role="status">
+  <div>
+    <p class="mb-1">已受理：评测编号
+      <a class="mono" href="{{ url_for('result_page', submission_id=sub.id) }}">#{{ sub.id }}</a>
+      （{{ VERDICT_LABELS.get(sub.status, sub.status) }}）。
+    </p>
+    <p class="mb-2 text-body-secondary small">今日配额 {{ quota.used }} / {{ quota.limit }}。</p>
+    <a class="btn btn-quiet btn-sm" href="{{ url_for('result_page', submission_id=sub.id) }}">查看评测结果</a>
+  </div>
+</div>
+{% else %}
+<div class="notice notice-critical" role="alert">{{ message }}</div>
+{% endif %}

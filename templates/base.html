@@ -42,8 +42,8 @@
           <span class="dot" aria-hidden="true"></span>Stage 1 · 线上赛
         </span>
 
-        <div class="ms-auto d-none d-md-flex align-items-center gap-3">
-          <span class="refresh-line">
+        <div class="ms-auto d-flex align-items-center gap-3">
+          <span class="refresh-line d-none d-md-inline">
             距 05:00 结算 <span class="mono" data-countdown aria-live="off">--</span>
           </span>
           <button class="icon-btn" id="themeToggle" type="button" aria-pressed="false" aria-label="切换深色模式">
@@ -55,35 +55,30 @@
               <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
             </svg>
           </button>
-          {% if current_user %}
-          <div class="dropdown">
-            <button class="btn btn-sm btn-brand-outline dropdown-toggle" type="button" id="acctMenu"
-                    data-bs-toggle="dropdown" aria-expanded="false" aria-label="账号菜单：{{ current_user.name }}">
-              {{ current_user.name }}
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="acctMenu">
-              <li><a class="dropdown-item" href="{{ url_for('auth.team_page') }}">我的队伍</a></li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <form method="post" action="{{ url_for('auth.logout_page') }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="dropdown-item" type="submit">退出登录</button>
-                </form>
-              </li>
-            </ul>
+          <div class="d-none d-md-flex align-items-center gap-3">
+            {% if current_user %}
+            <div class="dropdown">
+              <button class="btn btn-sm btn-brand-outline dropdown-toggle" type="button" id="acctMenu"
+                      data-bs-toggle="dropdown" aria-expanded="false" aria-label="账号菜单：{{ current_user.name }}">
+                {{ current_user.name }}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="acctMenu">
+                <li><a class="dropdown-item" href="{{ url_for('auth.team_page') }}">我的队伍</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <form method="post" action="{{ url_for('auth.logout_page') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="dropdown-item" type="submit">退出登录</button>
+                  </form>
+                </li>
+              </ul>
+            </div>
+            {% else %}
+            <a class="btn btn-sm btn-quiet" href="{{ url_for('auth.login_page') }}">登录</a>
+            <a class="btn btn-sm btn-brand" href="{{ url_for('auth.register_page') }}">注册</a>
+            {% endif %}
           </div>
-          {% else %}
-          <a class="btn btn-sm btn-quiet" href="{{ url_for('auth.login_page') }}">登录</a>
-          <a class="btn btn-sm btn-brand" href="{{ url_for('auth.register_page') }}">注册</a>
-          {% endif %}
         </div>
-
-        {# 移动端：只保留主题切换 #}
-        <button class="icon-btn d-md-none ms-auto" id="themeToggleMobile" type="button" aria-label="切换深色模式" onclick="document.getElementById('themeToggle').click()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
-          </svg>
-        </button>
       </div>
     </div>
 
@@ -110,7 +105,8 @@
                  {% if ep == 'standings_page' %}aria-current="page"{% endif %}>排行榜</a>
             </li>
             <li class="nav-item">
-              <span class="nav-link disabled" aria-disabled="true" title="提交功能在下一阶段上线">提交</span>
+              <a class="nav-link{% if ep == 'submit_page' %} active{% endif %}" href="{{ url_for('submit_page') }}"
+                 {% if ep == 'submit_page' %}aria-current="page"{% endif %}>提交</a>
             </li>
             <li class="nav-item">
               <a class="nav-link{% if ep in ('auth.team_page', 'auth.team_join_page') %} active{% endif %}" href="{{ url_for('auth.team_page') }}"

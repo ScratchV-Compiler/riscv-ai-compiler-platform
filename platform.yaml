@@ -1,0 +1,112 @@
+# =============================================================================
+# RISC-V AI 编译器挑战赛 · 评测平台 · 可切换配置
+# -----------------------------------------------------------------------------
+# 约定：
+#   * 「可切换」的东西都收敛到本文件，代码不再写死；改完重启服务生效
+#     （app.py 以 debug 运行时会热重载）。
+#   * 每一项都可用环境变量覆盖：PLATFORM_<路径，点换成下划线，大写>
+#       例：PLATFORM_JUDGE_BACKEND=stub
+#           PLATFORM_SCRATCHV_BASELINE_REF=<commit>
+#           PLATFORM_ACTIVE_PROBLEM_SET=contest
+#   * 路径（target_model / verify_tool / root）可用相对本仓根的路径，
+#     也可用绝对路径；不可用 ~。
+# =============================================================================
+
+# 当前生效的赛题集：demo（LeetCode 安全桩）| contest（补丁改造 ScratchV，真实赛道）
+active_problem_set: demo
+
+# ---- 配额 ----
+quota:
+  daily: 99              # 每队每日提交上限
+  cooldown_seconds: 5    # 同队两次提交最小间隔（软限频）
+
+# ---- 上传约束 ----
+upload:
+  max_bytes: 2097152          # 单文件上限（字节），2 MB
+  patch_ext: [".patch", ".diff"]   # contest 赛道允许的扩展名
+  demo_ext: [".py"]                # demo 赛道允许的扩展名
+
+# ---- 评测 ----
+judge:
+  backend: auto          # auto | stub | scratchv_patch
+                         #   auto：有可用 ScratchV 环境则用 scratchv_patch，否则回退 stub
+  uarch: basic           # scratchv_patch 仿真微架构档位：single|fast|basic|slow
+  max_instr: 50000000    # 仿真动态指令上限（超出判 timeout）
+  timeout_seconds: 120   # 单次评测墙钟上限
+  tol_lsb: 1             # 正确性容差（Q16.16 绝对误差，单位 LSB）
+
+# ---- ScratchV 真实赛道 ----
+scratchv:
+  root: /root/Lab/ScratchV
+  baseline_ref: 6fcb97b58e73c12cb653ec1d8e21a40db887cd56   # 冻结基线 commit（可随时切换）
+  python: /usr/local/bin/python3.11
+  verify_tool: /root/Lab/fuck_students/ai_compiler_challange/2026/2026华东师范大学第一届ai编译竞赛策划案/评测工具/verify_model.py
+  compute_baseline: true     # true：每次评测同机跑未打补丁基线（基线版本可随时切换）；
+                             # false：用 contest_problems[*].baseline 预置值
+  patch:
+    # 允许改动的路径（glob，相对 ScratchV 仓根）；只有这些路径的改动会被接受。
+    allow:
+      - "scratchv/standalone/onnx_to_riscv_standalone.py"
+      - "scratchv/standalone/**.py"     # 允许新增 standalone 辅助模块
+    # 禁止改动（即便同时命中 allow，也以 deny 为准）；命中即 compile_error(scope)。
+    deny:
+      - "scratchv/standalone/benchmark.py"      # 计时来源
+      - "scratchv/standalone/bench_report.py"
+      - "scratchv/standalone/rv32_bench.py"
+      - "scratchv/standalone/run_spike_bench.py"
+      - "scratchv/standalone/spike_sim.py"
+      - "scratchv/standalone/cache_model.py"
+      - "scratchv/simulator/**"                 # 交叉校验仿真器
+      - "tests/**"
+      - "Makefile"
+      - "scripts/**"
+      - "scratchv/ci/**"
+      - "ci_models.json"
+      - "benchmark_reports/**"
+      - "scratchv/optimizer/**"                 # 不在 standalone 生产路径上
+      - "scratchv/ir/**"
+      - "scratchv/frontend/**"
+      - "scratchv/pass_interface.py"
+      - "scratchv/backend/asm_peephole.py"
+
+# ---- 计分 ----
+scoring:
+  metric: cycles            # 主指标：cycles | instructions（权重最终由主办商定）
+  policy: ratio_vs_baseline # ratio_vs_baseline | gate_only
+  cap: 100                  # 得分上限
+
+# ---- 真实赛道（contest）赛题 ----
+#   target_model：固定模型（ONNX）路径
+#   baseline：null 表示基线不可运行（如缺算子），此时按 scoring.policy 处理
+contest_problems:
+  - id: conv
+    no: 1
+    code: "CV"
+    title: 固定卷积优化
+    summary: 在固定的 3×3 卷积模型上，改造代码生成让动态周期/指令数下降
+    task: ScratchV standalone 已支持 Conv（Q16.16）。请在冻结基线之上优化卷积代码生成（地址计算、寄存器使用、循环结构等），使固定模型在保证数值正确的前提下更快。
+    input: 固定 ONNX 模型（1×1×8×8 输入，2 输出通道，3×3 核，pad=1），确定性输入。
+    output: 与 NumPy 参考逐元素比对，Q16.16 绝对误差 ≤1 LSB 视为正确。
+    scale: 1×1×8×8 → 1×2×8×8；单次评测预算 ≤ 5×10⁶ 动态指令。
+    hint: 通用/带 pad 路径每次乘加都在重算地址与边界判断，指针游走与常量外提收益最大。
+    formula: 得分 = 100 × min(1, 基线周期 ÷ 本队周期)。
+    target_model: test_data/contest/conv_tiny.onnx
+    seed: 0
+    max_instr: 5000000
+    baseline: {instructions: 44706, cycles: 70990, cpi: 1.588, code_size: 548}
+
+  - id: fwht
+    no: 2
+    code: "FW"
+    title: 实现 Fwht 算子
+    summary: 基线无 Fwht 算子，提交补丁实现它并保证数值正确
+    task: ScratchV standalone 基线不含 Fwht（快速哈达玛变换）算子，遇到该 ONNX 节点会代码生成失败。请在冻结基线上新增该算子（形状推导 + 代码生成 dispatch），使其可编译并数值正确。
+    input: 固定 ONNX 模型（单 Fwht 节点，输入 [1,64]），确定性输入。
+    output: 与 NumPy 参考逐元素比对，Q16.16 绝对误差 ≤1 LSB 视为正确。
+    scale: N=64；单次评测预算 ≤ 5×10⁶ 动态指令。
+    hint: 参考 poc_fwht 补丁的结构：在 _infer_node_shape 增加形状推导，并新增 _gen_fwht（dispatch 按 _gen_{op} 自动生效）。
+    formula: 基线不可运行，本赛题按「正确性门禁」计分（通过即满分）。
+    target_model: test_data/contest/fwht_n64.onnx
+    seed: 0
+    max_instr: 5000000
+    baseline: null

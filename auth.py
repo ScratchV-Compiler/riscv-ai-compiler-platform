@@ -10,7 +10,7 @@ import functools
 import re
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import (Blueprint, current_app, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
@@ -63,6 +63,20 @@ def api_login_required(view):
     def wrapped(*args, **kwargs):
         if current_user() is None:
             return jsonify({'error': '请先登录'}), 401
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def team_required(view):
+    """页面用：需登录且已入队；未入队引导去建队/入队。"""
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if user is None:
+            return redirect(url_for('auth.login_page', next=request.path))
+        if user.team is None:
+            flash('提交前请先组建或加入一支队伍。', 'error')
+            return redirect(url_for('auth.team_join_page'))
         return view(*args, **kwargs)
     return wrapped
 
@@ -239,14 +253,15 @@ def team_payload(team, with_members=False):
 
 def quota_payload(team):
     limit = current_app.config['DAILY_QUOTA']
+    reset_at = (last_reset_utc() + timedelta(days=1))
     if team is None:
-        return {'used': 0, 'limit': limit}
+        return {'used': 0, 'limit': limit, 'reset_at': reset_at.isoformat() + 'Z'}
     since = last_reset_utc()
     used = Submission.query.filter(
-        Submission.team_name == team.name,
+        Submission.team_id == team.id,
         Submission.created_at >= since,
     ).count()
-    return {'used': used, 'limit': limit}
+    return {'used': used, 'limit': limit, 'reset_at': reset_at.isoformat() + 'Z'}
 
 
 # ---------------------------------------------------------------------------
@@ -318,11 +333,11 @@ def team_page():
     if team:
         since = last_reset_utc()
         my_subs = (Submission.query
-                   .filter_by(team_name=team.name)
+                   .filter(Submission.team_id == team.id)
                    .order_by(Submission.created_at.desc())
                    .limit(20).all())
         used = Submission.query.filter(
-            Submission.team_name == team.name, Submission.created_at >= since
+            Submission.team_id == team.id, Submission.created_at >= since
         ).count()
     return render_template(
         'team.html', user=user, team=team,

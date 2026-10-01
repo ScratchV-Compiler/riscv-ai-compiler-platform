@@ -1,0 +1,16 @@
+{% if quota %}
+{% set pct = (quota.used / quota.limit * 100) if quota.limit else 0 %}
+<div class="d-flex justify-content-between">
+  <span>今日已提交 <span class="mono">{{ quota.used }}</span> / {{ quota.limit }}</span>
+  <span class="text-body-secondary small">每日 05:00（UTC+8）重置</span>
+</div>
+<div class="quota-bar {% if quota.used >= quota.limit %}is-out{% elif pct >= 80 %}is-low{% endif %}"
+     role="img" aria-label="今日配额已用 {{ quota.used }} / {{ quota.limit }}">
+  <span style="width: {{ 100 if pct > 100 else pct }}%"></span>
+</div>
+{% if quota.used >= quota.limit %}
+<p class="text-body-secondary small mb-0">配额已用尽，每日 05:00（UTC+8）后恢复。</p>
+{% endif %}
+{% else %}
+<p class="text-body-secondary mb-0">登录并加入队伍后可查看提交配额。</p>
+{% endif %}

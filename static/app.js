@@ -89,14 +89,35 @@
     if (csrfToken) evt.detail.headers["X-CSRFToken"] = csrfToken;
   });
 
-  /* ---------- htmx：请求失败时给出可操作提示，不静默 ---------- */
+  /* ---------- htmx：允许 4xx 片段正常替换（表单错误要展示给用户） ---------- */
+  var SWAP_ERROR_STATUS = [400, 403, 409, 413, 422, 429];
+  document.body.addEventListener("htmx:beforeSwap", function (evt) {
+    var status = evt.detail.xhr.status;
+    if (SWAP_ERROR_STATUS.indexOf(status) !== -1) {
+      evt.detail.shouldSwap = true;
+      evt.detail.isError = false;
+    }
+  });
+
+  /* ---------- htmx：真正失败（5xx/网络）时给出可操作提示，不静默 ---------- */
   document.body.addEventListener("htmx:responseError", function (evt) {
+    var status = evt.detail.xhr && evt.detail.xhr.status;
+    if (SWAP_ERROR_STATUS.indexOf(status) !== -1) return; // 已在片段里展示
     var target = evt.detail.target;
     if (!target) return;
     target.innerHTML =
-      '<div class="empty">' +
-      "<p>排行榜暂时取不到数据。请刷新页面重试；若持续失败，把当前 URL 和大致时间发给赛事群。</p>" +
-      '<button class="btn btn-quiet btn-sm" type="button" onclick="location.reload()">重新加载</button>' +
+      '<div class="notice notice-critical" role="alert">' +
+      "<div><p class=\"mb-1\">操作没有完成，服务暂时不可用。请刷新页面重试；若持续失败，把当前 URL 和大致时间发给赛事群。</p>" +
+      '<button class="btn btn-quiet btn-sm" type="button" onclick="location.reload()">重新加载</button></div>' +
       "</div>";
+  });
+
+  /* ---------- 提交成功后清空已选文件（避免重复提交同一补丁） ---------- */
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    var form = evt.detail.elt;
+    if (!form || form.tagName !== "FORM") return;
+    if (evt.detail.successful && form.getAttribute("hx-post")) {
+      try { form.reset(); } catch (e) { /* 忽略 */ }
+    }
   });
 })();

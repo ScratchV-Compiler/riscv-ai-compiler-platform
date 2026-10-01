@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}提交 · RISC-V AI 编译器挑战赛{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>提交</h1>
+  {% if kind == 'patch' %}
+  <p class="lede">上传<strong>改造 ScratchV 编译器的补丁</strong>，平台在固定赛题上编译、仿真并计分。</p>
+  {% else %}
+  <p class="lede">上传你的解题代码，平台在固定用例上评测。</p>
+  {% endif %}
+</div>
+
+<section class="panel" aria-labelledby="formHeading">
+  <div class="panel-head">
+    <h2 id="formHeading">提交评测</h2>
+    <span class="text-body-secondary small">每队每日 {{ quota.limit }} 次</span>
+  </div>
+  <div class="panel-body">
+    <form hx-post="{{ url_for('frag_submit') }}"
+          hx-target="#submit-feedback" hx-swap="innerHTML"
+          hx-encoding="multipart/form-data" method="post"
+          action="{{ url_for('frag_submit') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label" for="problem">赛题</label>
+          <select class="form-select" id="problem" name="problem" required>
+            {% for p in problems %}
+            <option value="{{ p.id }}" {% if p.id == problem %}selected{% endif %}>
+              {{ p.title }}（{{ p.id }}）
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label" for="patch">
+            {% if kind == 'patch' %}补丁文件{% else %}源码文件{% endif %}
+          </label>
+          <input class="form-control" type="file" id="patch" name="patch" required
+                 {% if kind == 'patch' %}accept=".patch,.diff"{% else %}accept=".py"{% endif %}>
+          <div class="form-hint">
+            {% if kind == 'patch' %}
+              提交 <code>git diff</code> / <code>format-patch</code> 生成的补丁（.patch / .diff，≤2 MB）。改动范围受路径白名单限制，越界会在结果页说明原因。
+            {% else %}
+              提交 .py 源文件（≤2 MB）。
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-brand" type="submit">提交评测</button>
+        <span class="small text-body-secondary">提交后在本页或「我的队伍」查看评测编号与结果。</span>
+      </div>
+    </form>
+
+    <div id="submit-feedback" class="mt-3" aria-live="polite"></div>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="quotaHeading">
+  <div class="panel-head">
+    <h2 id="quotaHeading">今日配额</h2>
+    <span class="text-body-secondary small" hx-get="{{ url_for('frag_quota') }}"
+          hx-trigger="every 60s" hx-swap="none"></span>
+  </div>
+  <div class="panel-body" hx-get="{{ url_for('frag_quota') }}"
+       hx-trigger="every 60s" hx-swap="innerHTML">
+    {% include 'fragments/quota.html' %}
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="ruleHeading">
+  <div class="panel-head"><h2 id="ruleHeading">评测口径</h2></div>
+  <div class="panel-body">
+    {% if kind == 'patch' %}
+    <ul class="kv">
+      <li><span class="k">评测方式</span><span class="v">补丁 + 冻结基线编译仿真</span></li>
+      <li><span class="k">基线版本</span><span class="v mono">{{ baseline_ref or '—' }}</span></li>
+      <li><span class="k">正确性</span><span class="v">Q16.16 ≤1 LSB（一票否决）</span></li>
+      <li><span class="k">计分</span><span class="v">{{ scoring_metric }} 相对基线</span></li>
+    </ul>
+    <p class="text-body-secondary small mt-2 mb-0">
+      只允许改动编译器源码路径；测量/仿真/测试/构建文件与不在生产路径上的模块（如 optimizer、ir、frontend）不可改动。
+    </p>
+    {% else %}
+    <p class="text-body-secondary mb-0">
+      当前为演示赛道：提交仅做确定性桩评测，不执行选手代码，用于展示完整流程。
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -211,7 +211,7 @@ kill <PID>; pkill -f "python app.py"
 改 `app.py` 末行 `port=5000`，或用 WSGI 命令指定 `--port` / `-b 0.0.0.0:新端口`。
 
 **Q5. 提交后一直 `pending`？**
-评测 worker 依赖 `spike`、选手脚本约定等（见 `evaluator.py`），当前为占位实现；纯展示页面不受影响。
+最常见原因是**服务被重启**——任务队列在内存中。启动时 `recover_stale_submissions()` 会把中断的 `pending`/`running` 提交标记为 `runtime_error`，重新提交即可。评测后端见 `evaluator.py` 与 `backends/`（`stub` 桩 / `scratchv_patch` 真实补丁）。纯展示页面不受影响。
 
 ---
 

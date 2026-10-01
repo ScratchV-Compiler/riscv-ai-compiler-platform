@@ -461,7 +461,7 @@ code, pre, kbd, samp { font-family: var(--mono); }
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
-.filter-label { font-size: 0.8rem; color: var(--ink-600); font-weight: 600; }
+.filter-label { font-size: 0.8rem; color: var(--ink-600); font-weight: 600; white-space: nowrap; }
 .filter-group { display: inline-flex; align-items: center; gap: 0.5rem; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .seg a {
@@ -475,6 +475,13 @@ code, pre, kbd, samp { font-family: var(--mono); }
 .seg a:last-child { border-right: 0; }
 .seg a:hover { background: var(--surface-2); color: var(--brand-700); }
 .seg a[aria-current="true"] { background: var(--brand-700); color: #fff; }
+
+/* 小屏：筛选分段控件过长时横向滚动，避免逐项换行挤压 */
+@media (max-width: 767.98px) {
+  .filterbar { gap: 0.4rem 0.6rem; }
+  .filterbar .seg { max-width: 100%; overflow-x: auto; }
+  .filterbar .seg a { white-space: nowrap; }
+}
 
 /* --------------------------------------------------------------------------
    11. 状态徽章 / 提示 / 空状态
@@ -605,3 +612,29 @@ code, pre, kbd, samp { font-family: var(--mono); }
   border-radius: 999px; background: var(--brand-100);
   color: var(--brand-500-text); border: 1px solid var(--border);
 }
+
+/* --------------------------------------------------------------------------
+   16. 提交与结果（P3）
+   -------------------------------------------------------------------------- */
+.panel-head h2 .vbadge { font-size: 0.85rem; }
+
+.codeblock {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink-900);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 24rem;
+}
+
+details.faq > summary:focus-visible { box-shadow: var(--ring); }
+
+/* htmx 请求进行中：轻微降低目标区透明度，给用户反馈 */
+.htmx-request { opacity: 0.6; transition: opacity 0.15s ease; }

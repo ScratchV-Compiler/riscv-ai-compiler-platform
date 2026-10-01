@@ -101,16 +101,19 @@
           <th scope="col">状态</th>
           <th scope="col" class="text-end">得分</th>
           <th scope="col">提交时间</th>
+          <th scope="col">操作</th>
         </tr>
       </thead>
       <tbody>
         {% for s in submissions %}
+        {% set v = s.verdict or s.status %}
         <tr>
           <td class="mono">#{{ s.id }}</td>
           <td>{{ s.problem_id }}</td>
-          <td>{{ s.status }}</td>
+          <td><span class="vbadge {{ VERDICT_CSS.get(v, 'vbadge-pending') }}">{{ VERDICT_LABELS.get(v, v) }}</span></td>
           <td class="n">{{ '%.2f'|format(s.score or 0) }}</td>
           <td class="n text-body-secondary">{{ s.created_at.strftime('%m-%d %H:%M') }}</td>
+          <td><a href="{{ url_for('result_page', submission_id=s.id) }}">查看结果</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -118,8 +121,8 @@
   </div>
   {% else %}
   <div class="panel-body empty">
-    <p>还没有提交记录。提交入口在下一阶段上线，当前可以先浏览赛题、准备代码。</p>
-    <a class="btn btn-quiet btn-sm" href="{{ url_for('problems_page') }}">先看赛题</a>
+    <p>还没有提交记录。选一道赛题，上传你的代码开始评测。</p>
+    <a class="btn btn-brand btn-sm" href="{{ url_for('submit_page') }}">去提交</a>
   </div>
   {% endif %}
 </section>

@@ -17,7 +17,7 @@ from problems import problem_ids
 
 UTC8 = timezone(timedelta(hours=8))
 RESET_HOUR = 5
-VALID_STATUSES = ("success",)  # 当前后端用 success 表示有效提交
+VALID_VERDICTS = ("accepted",)  # P3：只有正确性通过且计分成功的提交计入榜单
 
 
 def fmt_local(dt):
@@ -50,7 +50,7 @@ def build_standings(problem="all", stage=1):
     since = last_reset_utc()
     query = Submission.query.filter(
         Submission.created_at >= since,
-        Submission.status.in_(VALID_STATUSES),
+        Submission.verdict.in_(VALID_VERDICTS),
     )
     if only:
         query = query.filter_by(problem_id=only)

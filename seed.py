@@ -6,12 +6,40 @@
 保证任何时候启动 demo 都有可展示的榜单，不会因数据过期而空榜。
 """
 import csv
+import math
 import os
 from datetime import timedelta
 
 from config import DEMO_SUBMISSIONS_CSV
 from models import db, Submission
 from standings import last_reset_utc
+
+
+def refresh_demo_submissions():
+    """把已过期的演示数据整体前移到当前结算窗口。
+
+    演示行以 `code_path == ''` 标识（真实提交一定会写入源码路径）。
+    启动时若演示数据仍停留在更早的结算日，则整体按整天平移，保证 demo
+    任何时候都有可展示的当日榜单；相对时间间隔不变，真实提交不受影响。
+    返回被平移的行数（0 表示无需处理）。
+    """
+    demo = Submission.query.filter_by(code_path='').all()
+    if not demo:
+        return 0
+
+    since = last_reset_utc()
+    latest = max(s.created_at for s in demo)
+    delta = since - latest
+    if delta.total_seconds() <= 0:
+        return 0
+
+    days = math.ceil(delta.total_seconds() / 86400.0)
+    shift = timedelta(days=days)
+    for s in demo:
+        s.created_at = s.created_at + shift
+        s.updated_at = (s.updated_at or s.created_at) + shift
+    db.session.commit()
+    return len(demo)
 
 
 def seed_demo_submissions():

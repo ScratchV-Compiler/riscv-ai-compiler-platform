@@ -1,0 +1,122 @@
+{# 结果卡片：整页首屏与 /frag/result 共用；终态后不再轮询 #}
+{% set v = submission.verdict or submission.status %}
+{% set label = VERDICT_LABELS.get(v, v) %}
+{% set css = VERDICT_CSS.get(v, 'vbadge-pending') %}
+{% set d = submission.parsed_details() %}
+{% set raw_delay = 2 * (2 ** ([tick, 3] | min)) %}
+{% set delay = [raw_delay, 16] | min %}
+{% set corr = d.get('correctness') %}
+{% set metrics = d.get('metrics') %}
+{% set patched = metrics.get('patched') if metrics else none %}
+{% set baseline = metrics.get('baseline') if metrics else none %}
+{% set ratio = metrics.get('ratio') if metrics else none %}
+{% set apply_info = d.get('apply') %}
+
+<div id="result"
+     hx-get="{{ url_for('frag_result', submission_id=submission.id) }}?tick={{ tick + 1 }}"
+     {% if not terminal %}hx-trigger="every {{ delay }}s"{% endif %}
+     hx-swap="outerHTML">
+
+  <div class="panel" aria-labelledby="resHeading">
+    <div class="panel-head">
+      <h2 id="resHeading">
+        <span class="vbadge {{ css }}">{{ label }}{% if v == 'accepted' %}（得分 {{ '%.2f'|format(submission.score or 0) }}）{% endif %}</span>
+      </h2>
+      <span class="text-body-secondary small">
+        #{{ submission.id }} · {{ submission.problem_id }} · {{ submission.team_name }}
+      </span>
+    </div>
+
+    <div class="panel-body">
+      {% if not terminal %}
+      <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span>评测中，页面会自动刷新…</span>
+      </div>
+      {% else %}
+
+      {% if v == 'invalid' %}
+      <div class="notice notice-critical mb-3" role="alert">
+        <div><strong>正确性未通过，成绩无效（一票否决）。</strong>
+          {% if corr %}最大误差 {{ corr.max_lsb }} LSB（容差 {{ corr.tol_lsb }}）。{% endif %}</div>
+      </div>
+      {% endif %}
+
+      {% if d.get('error') %}
+      <div class="notice {% if v in ('compile_error', 'runtime_error') %}notice-critical{% else %}notice-warn{% endif %} mb-3" role="alert">
+        <div>
+          <p class="mb-0">{{ d.get('error') }}</p>
+          {% if d.get('stage') %}<p class="mb-0 text-body-secondary small">阶段：{{ d.get('stage') }}</p>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if corr %}
+      <h3 class="h6 mb-2">正确性</h3>
+      <dl class="spec mb-3">
+        <dt>比对结果</dt>
+        <dd><span class="mono">{{ corr.status }}</span> · 最大误差 {{ corr.max_lsb }} LSB / 容差 {{ corr.tol_lsb }}</dd>
+        {% if corr.output_shape %}<dt>输出形状</dt><dd class="mono">{{ corr.output_shape }}</dd>{% endif %}
+      </dl>
+      {% endif %}
+
+      {% if metrics %}
+      <h3 class="h6 mb-2">性能指标</h3>
+      <div class="table-scroll mb-3">
+        <table class="table table-standings">
+          <thead>
+            <tr>
+              <th scope="col">指标</th>
+              <th scope="col" class="text-end">本队</th>
+              <th scope="col" class="text-end">基线</th>
+              <th scope="col" class="text-end">加速比</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key, name in [('cycles','周期 total_cycles'), ('instructions','指令数'), ('cpi','CPI'), ('code_size','代码体积 B')] %}
+            <tr>
+              <td>{{ name }}</td>
+              <td class="n">{{ patched.get(key) if patched and patched.get(key) is not none else '—' }}</td>
+              <td class="n">{{ baseline.get(key) if baseline and baseline.get(key) is not none else '—' }}</td>
+              <td class="n">{% if ratio and ratio.get(key) %}{{ ratio.get(key) }}×{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if d.get('baseline_source') %}
+      <p class="text-body-secondary small">基线来源：{{ d.get('baseline_source') }}{% if d.get('baseline_ref') %} · {{ d.get('baseline_ref')[:10] }}{% endif %}</p>
+      {% endif %}
+      {% endif %}
+
+      {% if apply_info and apply_info.get('files') %}
+      <h3 class="h6 mb-2">改动文件</h3>
+      <ul class="member-list mb-3">
+        {% for f in apply_info.get('files') %}<li><span class="mono">{{ f }}</span></li>{% endfor %}
+      </ul>
+      {% endif %}
+
+      {% if d.get('log_tail') %}
+      <details class="faq">
+        <summary>失败日志</summary>
+        <pre class="codeblock">{{ d.get('log_tail') }}</pre>
+      </details>
+      {% endif %}
+
+      {% if patch_text %}
+      <details class="faq">
+        <summary>提交内容（{{ submission.source_name or '已上传文件' }}）</summary>
+        <pre class="codeblock">{{ patch_text }}</pre>
+      </details>
+      {% endif %}
+
+      {% endif %}
+    </div>
+
+    <div class="panel-foot">
+      提交于 {{ submission.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+      {% if submission.baseline_ref %} · 基线 {{ submission.baseline_ref[:10] }}{% endif %}
+      {% if d.get('eval_ms') is not none %} · 评测耗时 {{ d.get('eval_ms') }} ms{% endif %}
+    </div>
+  </div>
+</div>

@@ -6,8 +6,8 @@
   <span class="chip"><span class="dot" aria-hidden="true"></span>Stage 1 线上赛 · 进行中</span>
   <h1>RISC-V AI 编译器挑战赛</h1>
   <p class="lede">
-    在线提交你的解题代码，平台自动评测，按正确性与运行效率计分。
-    三道题：两数相加 / 无重复字符的最长子串 / 最长回文子串。
+    在线提交你的解法或编译器补丁，平台自动评测，按正确性与运行效率计分。
+    当前共 {{ problems|length }} 道赛题，详见赛题页。
   </p>
   <div class="hero-cta">
     <a class="btn btn-brand" href="{{ url_for('standings_page') }}">查看排行榜</a>
@@ -17,7 +17,7 @@
 
 <section class="panel mt-4" aria-labelledby="probHeading">
   <div class="panel-head">
-    <h2 id="probHeading">三道赛题</h2>
+    <h2 id="probHeading">{{ problems|length }} 道赛题</h2>
     <a class="small" href="{{ url_for('problems_page') }}">全部题目与数据规模</a>
   </div>
   <ul class="prob-list">
