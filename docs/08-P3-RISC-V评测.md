@@ -347,6 +347,37 @@ status=success | verdict=accepted | score=100.0 | 360/360 instructions | 结果�
 
 ## 八、运维要点
 
+### 给指定的人开访问（SSH 隧道账号）
+
+安全组按 **IP** 过滤，而个人的家宽/移动网络 IP 会变（运营商级 NAT 更是整片共享），
+所以「按人」开通不该走安全组，而是给每人一个**只能转发到平台的 SSH 账号**：
+
+```sh
+sh tools/add_tunnel_user.sh zhangsan      # 建账号 + 生成密钥
+sh tools/add_tunnel_user.sh --remove zhangsan   # 撤销
+```
+
+对方（保持窗口开着，浏览器开 `http://localhost:5000`）：
+
+```sh
+ssh -i <私钥> -N -L 5000:127.0.0.1:5000 tunnel-zhangsan@<公网IP>
+```
+
+限制由 `tools/sshd-tunnel.conf`（部署到 `/etc/ssh/sshd_config.d/`）里的
+`Match Group tunnel` 施加，**实测验证**：
+
+| 尝试 | 结果 |
+|---|---|
+| 转发到 `127.0.0.1:5000` | ✅ 通 |
+| 转发到 `127.0.0.1:22` | ✅ 被 `PermitOpen` 拒绝 |
+| 拿 shell | ✅ `nologin` 拒绝 |
+| 密码登录 | ✅ 拒绝（仅公钥） |
+| root 等其他账号 | ✅ 不受影响 |
+
+好处：**不依赖对方 IP**，从哪都能用；按人一套凭证，撤销即删账号。
+
+### 其余要点
+
 - **工具链**：`clang`、`ld.lld`、`qemu-riscv32` 必须在 PATH 上（Debian/Ubuntu 装
   `clang lld qemu-user`）。缺工具时评测返回 `internal_error` 而不是崩。
 - **以 root 运行**才能用 `unshare`/`setpriv` 降权。以非 root 跑时把
@@ -356,3 +387,4 @@ status=success | verdict=accepted | score=100.0 | 360/360 instructions | 结果�
 - **改了编译参数或换了 clang** ⇒ 重跑 `tools/gen_baseline.py`。
 - submodule 更新：`git submodule update --remote third_party/ScratchV`，
   并同步核对 ABI 是否变化。
+- 改 sshd 后必须 `sshd -t` 校验再 reload；错误配置会把你自己也关在门外。
