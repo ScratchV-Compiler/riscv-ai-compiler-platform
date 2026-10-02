@@ -54,7 +54,7 @@ PROBLEMS = [
         "code": "RV 2",
         "submittable": True,
         "title": "定点矩阵乘",
-        "summary": "手写 RV32IM 汇编实现 N×N 定点矩阵乘法，考察寄存器复用与循环组织。",
+        "summary": "用 RV32IM 汇编实现 N×N 定点矩阵乘法，考察寄存器复用与循环组织。",
         "task": (
             "用 RISC-V（RV32IM，ilp32）汇编实现一个裸机函数，计算两个 N×N 矩阵的乘积。"
             "数据为 Q16.16 定点整数，按行主序存放。"

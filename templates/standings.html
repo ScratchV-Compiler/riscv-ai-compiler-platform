@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>排行榜</h1>
   <p class="lede">
-    实时展示当日最优成绩，每日 05:00（UTC+8）结算名次并重置提交配额。
+    实时展示跨日累计的历史最优成绩；提交配额每日 05:00（UTC+8）重置。
     单题得分为百分制相对分，正确性未通过不计入。
   </p>
 </div>
@@ -49,11 +49,13 @@
     {% if standings.single %}
     <span class="text-body-secondary small">
       逐列数值为该数据点的<strong>评测代价</strong>（越小越好）：
-      代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中，取自本队该点最优的一次提交。
-      最右的合计列仍是<strong>得分</strong>。
+      代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中。
+      整行取自本队该题<strong>总得分最高</strong>的那一次提交，与最右的「得分」列同源。
+      列头下方的<strong>最优</strong>是全榜在该数据点的最小代价（即参考站的
+      <span class="mono">t_best</span>，会随别人提交下降），可当冲榜靶子。
     </span>
     {% endif %}
-    统计区间：{{ standings.since_str }} 起 · 数据更新可能滞后数秒
+    统计范围：全部历史有效提交 · 数据更新可能滞后数秒
   </div>
 </section>
 {% endblock %}
