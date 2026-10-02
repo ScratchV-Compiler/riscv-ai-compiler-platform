@@ -9,17 +9,21 @@
   某队得分 = 基准 ÷ 本队成绩 × 该点满分（对齐官方策划案口径，见 scoring.py）
 - 分数在**读取时**现算——基准随全场水平浮动，写死在评测结果里会造成
   「先提交的拿满分、后提交的同样代码拿低分」
-- 当日最优：同一队同一题取当日内最大值
+- **历史最优**：同一队同一题取**全部有效提交**里的最大值（跨日累计，
+  不随结算清零）。名次只增不减，未再次提交的队伍不会被挤出榜单。
+- **单题视图的逐点列 = 该队该题总得分最高那次提交的逐点「评测值（代价）」**，
+  与「得分」列同源（整行同一次提交）。展示的是**评测指标（代价）**而非换算后的得分，
+  且不跨提交拼接、不显示相对全场最优的差距。
 - 总分 = 各题得分之和（三题满分 100）
-- 每日 05:00（UTC+8）为结算点与配额重置点；榜单实时展示
+- 每日 05:00（UTC+8）只重置**提交配额**（见 app._team_quota_used）；
+  榜单按历史最优实时展示，没有"每日结算定格"这一步。
 """
 from datetime import datetime, timedelta, timezone
 
 from models import Submission
 from problems import problem_ids, get_problem
 from riscv_problems import get_eval_spec, case_label
-from scoring import (parse_details, field_best, score_details,
-                     per_case_points, per_case_costs)
+from scoring import (parse_details, field_best, score_details, per_case_costs)
 
 UTC8 = timezone(timedelta(hours=8))
 RESET_HOUR = 5
@@ -44,18 +48,19 @@ def last_reset_utc(now=None):
 
 def build_standings(problem="all", stage=1):
     """
-    返回 {columns, rows, total_label, since}。
+    返回 {columns, rows, total_label}。
     problem = "all" → 按各题总分排名，逐题列出；
     problem = 题目 id → 只按该题排名，只出该列。
+
+    统计范围是**全部历史有效提交**（不按 05:00 结算点裁剪窗口）——
+    榜单是跨日累计的，配额重置不影响已取得的成绩。
     """
     ids = problem_ids()
     only = problem if problem in ids else None
     scoring_cols = [only] if only else ids          # 参与计分的题
     display_cols = [] if only else ids              # 表格里逐题展示的列
 
-    since = last_reset_utc()
     query = Submission.query.filter(
-        Submission.created_at >= since,
         Submission.status.in_(VALID_STATUSES),
     )
     if only:
@@ -80,7 +85,7 @@ def build_standings(problem="all", stage=1):
         row = teams.setdefault(
             sub.team_name,
             {"team": sub.team_name, "scores": {}, "count": 0, "last": None,
-             "by_size": {}, "by_cost": {}},
+             "by_cost": {}},
         )
         row["count"] += 1
         if row["last"] is None or sub.created_at > row["last"]:
@@ -88,21 +93,18 @@ def build_standings(problem="all", stage=1):
         if sub.problem_id in scoring_cols:
             live_score, _ = score_details(sub.problem_id, details, best)
             score = live_score if live_score is not None else float(sub.score or 0.0)
-            prev = row["scores"].get(sub.problem_id, 0.0)
-            row["scores"][sub.problem_id] = max(prev, score)
-            # 逐点得分：同一数据点取该队历次提交里的最高分
-            for n, pts in per_case_points(sub.problem_id, details, best).items():
-                if pts > row["by_size"].get(n, 0.0):
-                    row["by_size"][n] = pts
-            # 逐点**代价**（原始评测指标）：同一数据点取历次里的最小代价
-            for n, cost in per_case_costs(sub.problem_id, details).items():
-                cur = row["by_cost"].get(n)
-                if cur is None or cost < cur:
-                    row["by_cost"][n] = cost
+            # 「得分」= 该队该题**最好的一次提交**（独立计分后取最大）——排名与总分口径。
+            # 单题视图的逐点列与它**同源**：整行都取这一次提交的逐点**评测值（代价）**，
+            # 不跨提交拼并集，也不额外展示相对 t_best 的差距。
+            if sub.problem_id not in row["scores"] or score > row["scores"][sub.problem_id]:
+                row["scores"][sub.problem_id] = score
+                row["by_cost"][sub.problem_id] = per_case_costs(sub.problem_id, details)
 
     rows = []
     for row in teams.values():
         total = sum(row["scores"].get(pid, 0.0) for pid in scoring_cols)
+        # 逐点列只在单题视图里出现，此时只有该题的提交，直接取该题的"最好提交"。
+        best_cost = row["by_cost"].get(only, {}) if only else {}
         rows.append(
             {
                 "team": row["team"],
@@ -110,9 +112,7 @@ def build_standings(problem="all", stage=1):
                 "total": round(total, 2),
                 # 没打过的数据点用 None（模板显示「—」）——与"打了但得 0 分"区分开。
                 # 旧记录（规模分级之前评的）没有 size 字段，会整行显示「—」。
-                "by_size": {n: (round(row["by_size"][n], 2) if n in row["by_size"] else None)
-                            for n, _ in size_cols},
-                "by_cost": {n: row["by_cost"].get(n) for n, _ in size_cols},
+                "by_cost": {n: best_cost.get(n) for n, _ in size_cols},
                 "count": row["count"],
                 "last": row["last"],
                 "last_str": fmt_local(row["last"]),
@@ -132,12 +132,23 @@ def build_standings(problem="all", stage=1):
         if vals:
             best_by_problem[pid] = max(vals)
 
-    # 每个数据点列的最优（**代价最小**，即该点最快）——单题榜据此高亮
+    # 每个数据点列的**全场纪录**（代价最小，即该点最快）——单题榜据此高亮。
+    # 用 field_best（全部提交的最小代价）而不是"表内行最小"：展示列是各家
+    # "最好那次提交"的快照，行最小可能高于真纪录（纪录由该队另一次提交保持），
+    # 那样高亮会谎称"该点代价最小"。高亮只给真正追平纪录的格子。
     best_by_size = {}
     for n, _ in size_cols:
-        vals = [r["by_cost"][n] for r in rows if r.get("by_cost", {}).get(n) is not None]
-        if vals:
-            best_by_size[n] = min(vals)
+        b = best.get((only, n))
+        if b is not None:
+            best_by_size[n] = b
+
+    # 每个数据点的**全榜最优代价**（= 参考站 CANNJudge 的 `t_best`：全榜当前最小值，
+    # 会随别人的提交下降）。单题榜在列头下方标成一行，当冲榜靶子用。
+    tbest_by_size = {}
+    for n, _ in size_cols:
+        b = best.get((only, n))
+        if b is not None:
+            tbest_by_size[n] = b
 
     # 列头显示标题而不是 id —— id 形如 matmul，会与「定点矩阵乘」的题名对不上
     column_labels = {}
@@ -150,11 +161,10 @@ def build_standings(problem="all", stage=1):
         "column_labels": column_labels,
         "size_columns": size_cols,
         "best_by_size": best_by_size,
+        "tbest_by_size": tbest_by_size,
         "best_by_problem": best_by_problem,
         "rows": rows,
         "total_label": "得分" if only else "总分",
-        "since": since,
-        "since_str": fmt_local(since),
         "stage": stage,
         "problem": problem,
         "single": only,

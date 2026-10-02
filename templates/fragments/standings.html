@@ -4,7 +4,7 @@
   <table class="table table-standings">
     <caption class="visually-hidden">
       榜单{% if standings.single %}（仅统计 {{ standings.single }}）{% endif %}：
-      排名、队伍、{{ standings.total_label }}{% if standings.size_columns %}、各数据点代价{% endif %}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
+      排名、队伍、{{ standings.total_label }}{% if standings.size_columns %}、各数据点评测代价{% endif %}{% if standings.columns %}、各题得分{% endif %}、提交次数、最后提交时间
     </caption>
     <thead>
       <tr>
@@ -12,9 +12,14 @@
         <th scope="col">队伍</th>
         <th scope="col" class="text-end">{{ standings.total_label }}</th>
         {% if standings.size_columns %}
-        {# 单题视图：把该题的每个数据点铺成一列，能看出「哪个规模崩了」 #}
+        {# 单题视图：把该题的每个数据点铺成一列。单元格是该点的**历史最高得分**
+           （跨提交取逐点最优），悬停显示对应代价；「得分」列则是单次最好提交。 #}
         {% for n, label in standings.size_columns %}
-        <th scope="col" class="text-end" title="数据点 {{ loop.index }}（{{ label }}）的评测代价">{{ label }}</th>
+        {% set tb = standings.tbest_by_size.get(n) %}
+        <th scope="col" class="text-end" title="数据点 {{ loop.index }}（{{ label }}）：本队总得分最高那次提交在该点的评测代价{% if tb is not none %}；全榜最优 t_best = {{ tb }}{% endif %}">
+          {{ label }}{% if tb is not none %}<br>
+          <span class="text-body-secondary fw-normal small">最优 {{ tb }}</span>{% endif %}
+        </th>
         {% endfor %}
         {% endif %}
         {% for pid in standings.columns %}

@@ -12,6 +12,36 @@
   <div class="hero-cta">
     <a class="btn btn-brand" href="{{ url_for('standings_page') }}">查看排行榜</a>
     <a class="btn btn-quiet" href="{{ url_for('problems_page') }}">阅读赛题</a>
+    <a class="btn btn-brand-outline" href="https://github.com/ScratchV-Compiler/ScratchV"
+       target="_blank" rel="noopener">用 ScratchV 编译器 ↗</a>
+  </div>
+</section>
+
+<section class="panel mt-4" aria-labelledby="scratchvHeading">
+  <div class="panel-head">
+    <h2 id="scratchvHeading">配套编译器：ScratchV</h2>
+    <a class="small" href="https://github.com/ScratchV-Compiler/ScratchV"
+       target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+  </div>
+  <div class="panel-body">
+    <p>
+      <strong>ScratchV</strong> 是本次赛题配套的开源 AI 编译器——「从 ONNX 到 RISC-V 机器码，
+      一个你完全看得懂的 AI 编译器」。本题考的是<strong>让编译器产出更省的 RV32IM 代码</strong>：
+      拿它当起点，读懂它、改它、把它优化得更快，就是最直接的通关路径。
+      强烈建议从这里开始，别把自己困在逐条指令的调参里。
+    </p>
+    <p class="text-body-secondary small mb-2">
+      平台对汇编的来历没有任何限制——ScratchV 生成的、你改造 ScratchV 后生成的、
+      或任何其他工具生成的，都按同一把尺子计分。先把基线跑出来，再谈优化。
+    </p>
+    <pre class="formula" aria-label="ScratchV 快速开始"><code>git clone https://github.com/ScratchV-Compiler/ScratchV.git
+cd ScratchV &amp;&amp; pip install -e .    # 装完即可编译赛题模型到 RV32IM</code></pre>
+    <div class="hero-cta mt-3">
+      <a class="btn btn-brand" href="https://github.com/ScratchV-Compiler/ScratchV"
+         target="_blank" rel="noopener">打开 GitHub 仓库</a>
+      <a class="btn btn-quiet" href="https://scratchv-compiler.github.io/ScratchV/docs/"
+         target="_blank" rel="noopener">在线课程（浏览器里学）</a>
+    </div>
   </div>
 </section>
 
@@ -55,6 +85,6 @@
     {% set standings = standings_preview %}
     {% include 'fragments/standings.html' %}
   </div>
-  <div class="panel-foot">榜单实时刷新；名次以每日 05:00（UTC+8）结算为准。</div>
+  <div class="panel-foot">榜单实时刷新；名次按跨日累计的历史最优排列。</div>
 </section>
 {% endblock %}
