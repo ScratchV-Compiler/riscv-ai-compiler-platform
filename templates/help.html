@@ -11,7 +11,7 @@
   <div>
     <strong>提交已开放。</strong>
     登录并加入队伍后，到
-    <a href="{{ url_for('submit_page') }}">提交页</a>
+    <a href="{{ url_for('contest.submit_page', slug=contest.slug) }}">提交页</a>
     上传或直接粘贴 RISC-V 汇编即可评测。
   </div>
 </div>
@@ -107,7 +107,7 @@
           <li><span class="mono">matmul</span>：4×4, 8×8, …, 64×64</li>
         </ul>
         <p>由小到大覆盖「基本正确性 → 循环开销 → 访存瓶颈」。完整表格见
-          <a href="{{ url_for('problems_page') }}">赛题页</a>。</p>
+          <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题页</a>。</p>
       </div>
     </details>
     <details class="faq">

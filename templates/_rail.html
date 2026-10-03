@@ -26,21 +26,28 @@
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
       每个数据点独立判定与计分，做错只丢该点的分。基准取全场该数据点的最优代价，因此会随他人成绩浮动。详见
-      <a href="{{ url_for('help_page') }}">帮助</a>。
+      <a href="{{ url_for('contest.help_page', slug=contest.slug) }}">帮助</a>。
     </p>
   </div>
 </div>
 
 <div class="panel">
-  <div class="panel-head"><h2>赛程</h2></div>
+  <div class="panel-head"><h2>本场次</h2></div>
   <div class="panel-body">
     <ul class="kv">
-      <li><span class="k">Stage 1</span><span class="v">线上 · 约 4 周</span></li>
-      <li><span class="k">Stage 2</span><span class="v">线下 · 3 小时</span></li>
-      <li><span class="k">晋级条件</span><span class="v">完成 Stage 1</span></li>
+      <li><span class="k">赛事</span><span class="v">{{ contest.title }}</span></li>
+      <li><span class="k">阶段</span><span class="v">{{ contest.stage_label }}</span></li>
+      <li><span class="k">状态</span><span class="v">{{ contest.status_label }}</span></li>
+      {% if contest.start_at %}<li><span class="k">开始</span><span class="v mono">{{ contest.start_at.strftime('%Y-%m-%d %H:%M') }}</span></li>{% endif %}
+      {% if contest.end_at %}<li><span class="k">结束</span><span class="v mono">{{ contest.end_at.strftime('%Y-%m-%d %H:%M') }}</span></li>{% endif %}
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
-      完成 Stage 1 且有有效提交即可晋级；Stage 1 成绩不带入决赛。
+      {% if contest.accepts_submissions %}
+      本场次<strong>进行中</strong>，可提交评测。
+      {% else %}
+      本场次 {{ contest.status_label }}，<strong>暂不接受提交</strong>，榜单为只读。
+      {% endif %}
+      <a href="{{ url_for('contests_page') }}">查看全部场次 →</a>
     </p>
   </div>
 </div>

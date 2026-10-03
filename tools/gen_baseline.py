@@ -11,6 +11,7 @@ guard 完好），所以本脚本同时是一次 oracle ↔ C 参考实现的交
 
     .venv/bin/python tools/gen_baseline.py
 """
+import argparse
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import contests              # noqa: E402
 import riscv_oracle          # noqa: E402
 import riscv_problems        # noqa: E402
 import riscv_runner          # noqa: E402
@@ -62,8 +64,9 @@ def build_reference_asm(source_rel):
     return asm
 
 
-def measure_problem(problem_id, spec, asm_path):
+def measure_problem(problem_id, spec, asm_path, seeds=None):
     """逐数据点测量；返回 {N: 指令数}。顺便验证参考解正确。"""
+    seeds = seeds if seeds is not None else EVAL_SEEDS
     work = riscv_runner.make_work_dir('/var/lib/riscv-eval', prefix='riscv_baseline_')
     try:
         player = os.path.join(work, 'player.s')
@@ -74,7 +77,7 @@ def measure_problem(problem_id, spec, asm_path):
         by_size_insn = {}       # 同一规模的裸指令数（供演示数据推导 指令:代价 比例）
         for idx in range(spec['case_count']):
             n = riscv_problems.case_size(spec, idx)
-            seed = EVAL_SEEDS[idx % len(EVAL_SEEDS)] if EVAL_SEEDS else 1000 + idx
+            seed = seeds[idx % len(seeds)] if seeds else 1000 + idx
             values = riscv_oracle.make_input(seed, spec, n)
             expected = riscv_oracle.reference(values, spec, n)
 
@@ -110,18 +113,32 @@ def measure_problem(problem_id, spec, asm_path):
 
 
 def main():
+    ap = argparse.ArgumentParser(description='逐数据点生成 baseline')
+    ap.add_argument('--contest', default=None,
+                    help='场次 slug（默认场次可省略）——按该场次的试卷与规格测量')
+    args = ap.parse_args()
+
+    contest = contests.get_contest(args.contest) if args.contest else contests.default_contest()
+    if contest is None:
+        raise SystemExit(f'未知场次：{args.contest}')
+
     status = riscv_runner.toolchain_status()
     if not all(status.values()):
         raise SystemExit(f'工具链不全：{status}')
 
-    out_path = os.path.join(ROOT, riscv_problems.DATA_DIR_BASELINE)
+    out_rel = contest.baseline_file or riscv_problems.DATA_DIR_BASELINE
+    out_path = os.path.join(ROOT, out_rel)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     data = {}
 
-    for problem_id, spec in riscv_problems.EVAL_SPECS.items():
+    print(f'场次：{contest.slug}（{contest.title}）→ {out_rel}')
+    seeds = list(contest.seeds) if contest.seeds else EVAL_SEEDS
+    for problem_id, spec in contests.specs_for(contest).items():
+        if spec is None:
+            continue
         print(f'{problem_id}:')
         asm = build_reference_asm(spec['reference'])
-        by_size, by_insn = measure_problem(problem_id, spec, asm)
+        by_size, by_insn = measure_problem(problem_id, spec, asm, seeds=seeds)
         data[problem_id] = {
             'by_size': by_size,                 # 每点 baseline 是 **cost**，不是裸指令数
             'by_size_instructions': by_insn,

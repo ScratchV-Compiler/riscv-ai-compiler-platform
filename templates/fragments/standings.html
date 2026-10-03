@@ -62,6 +62,6 @@
     {{ standings.problem|upper if standings.single else '当前' }}暂无有效提交。
     等第一份通过正确性校验的提交产生后，这里会实时出现名次。
   </p>
-  <a class="btn btn-quiet btn-sm" href="{{ url_for('problems_page') }}">先看赛题与数据规模</a>
+  <a class="btn btn-quiet btn-sm" href="{{ url_for('contest.problems_page', slug=contest.slug) }}">先看赛题与数据规模</a>
 </div>
 {% endif %}

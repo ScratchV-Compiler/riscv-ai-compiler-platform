@@ -125,9 +125,10 @@ def _record_reset_request(email):
 # 提交间隔限流（每选手两次成功提交之间至少间隔 N 秒）
 # ---------------------------------------------------------------------------
 
-def submit_wait_seconds(user):
-    """还需要等多少秒才能再次提交；0 表示可以提交。"""
-    rec = db.session.get(SubmitThrottle, user.id)
+def submit_wait_seconds(user, contest):
+    """还需要等多少秒才能**在该场次**再次提交；0 表示可以提交。"""
+    slug = _slug(contest)
+    rec = db.session.get(SubmitThrottle, (user.id, slug))
     if rec is None:
         return 0
     interval = current_app.config['SUBMIT_INTERVAL_SECONDS']
@@ -136,13 +137,14 @@ def submit_wait_seconds(user):
     return int(remain) + 1 if remain > 0 else 0
 
 
-def mark_submitted(user):
-    """记录一次成功提交的时间。**只在提交成功时调用**——
+def mark_submitted(user, contest):
+    """记录一次成功提交的时间（**该场次**）。**只在提交成功时调用**——
     传错文件、后缀不对这类无效提交不该消耗间隔。"""
+    slug = _slug(contest)
     now = datetime.utcnow()
-    rec = db.session.get(SubmitThrottle, user.id)
+    rec = db.session.get(SubmitThrottle, (user.id, slug))
     if rec is None:
-        db.session.add(SubmitThrottle(user_id=user.id, last_at=now))
+        db.session.add(SubmitThrottle(user_id=user.id, contest=slug, last_at=now))
     else:
         rec.last_at = now
     db.session.commit()
@@ -155,6 +157,12 @@ def format_wait(seconds):
         return f'{seconds} 秒'
     m, s = divmod(seconds, 60)
     return f'{m} 分 {s} 秒' if s else f'{m} 分钟'
+
+
+def default_landing_url():
+    """登录/注册/退出后落到**默认场次**首页——账号是全局的，但“回家”要落到某一处。"""
+    from contests import default_contest
+    return url_for('contest.index', slug=default_contest().slug)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +306,28 @@ def reset_password(raw_token, new_password):
     return user, None, None
 
 
+def _slug(contest):
+    """把场次参数（Contest 对象或 slug 字符串）统一成 slug。"""
+    return getattr(contest, 'slug', contest)
+
+
+def _contest_of(contest):
+    """把场次参数取成 Contest 对象（用于看状态/标题）。"""
+    if hasattr(contest, 'slug'):
+        return contest
+    from contests import get_contest, default_contest
+    return get_contest(contest) or default_contest()
+
+
+def _join_gate(contest):
+    """组队/入队的准入闸：**未开始与已结束的场次都不许参加**。
+    返回 (contest, err)——err 非空则调用方直接返回错误。"""
+    c = _contest_of(contest)
+    if not c.is_open:
+        return c, f'本场次（{c.title}）{c.status_label}，暂不能参加'
+    return c, None
+
+
 def _gen_invite_code():
     while True:
         code = ''.join(secrets.choice(_CODE_ALPHABET) for _ in range(8))
@@ -305,44 +335,57 @@ def _gen_invite_code():
             return code
 
 
-def create_team(user, name):
+def create_team(user, contest, name):
+    c, err = _join_gate(contest)
+    if err:
+        return None, err
+    slug = c.slug
     name = (name or '').strip()
     if not (1 <= len(name) <= 60):
         return None, '队名需为 1–60 个字符'
-    if user.team:
-        return None, '你已加入一支队伍，每人只能加入一支队伍'
-    taken = Team.query.filter_by(name=name).first()
+    if user.team_in(slug):
+        return None, '你已在本场次加入一支队伍，每人每场限一队'
+    taken = Team.query.filter_by(contest=slug, name=name).first()
     if taken is not None:
         if taken.disbanded_at is not None and taken.captain_id == user.id:
             return None, (f'「{name}」是你此前解散的队伍——'
                           f'若想继续用它，请用「恢复队伍」，队名与历史都会保留')
         return None, '该队名已被占用，换一个试试'
-    team = Team(name=name, invite_code=_gen_invite_code(), captain_id=user.id)
+    team = Team(contest=slug, name=name,
+                invite_code=_gen_invite_code(), captain_id=user.id)
     db.session.add(team)
     db.session.flush()
-    db.session.add(TeamMember(user_id=user.id, team_id=team.id))
+    db.session.add(TeamMember(user_id=user.id, contest=slug, team_id=team.id))
     db.session.commit()
     return team, None
 
 
-def join_team(user, invite_code):
+def join_team(user, contest, invite_code):
+    c, err = _join_gate(contest)
+    if err:
+        return None, err
+    slug = c.slug
     code = (invite_code or '').strip().upper()
     if not code:
         return None, '请输入邀请码'
-    if user.team:
-        return None, f'你已在队伍「{user.team.name}」，每人只能加入一支队伍'
+    if user.team_in(slug):
+        return None, f'你已在本场次加入队伍「{user.team_in(slug).name}」，每人每场限一队'
     team = Team.query.filter_by(invite_code=code, disbanded_at=None).first()
     if team is None:
         return None, '邀请码无效，请向队长确认'
+    if team.contest != slug:
+        # 邀请码是全局唯一的，但不属于本场次——别让人拿另一场的码串场入队
+        return None, '该邀请码不属于本场次，请向队长确认'
     if team.member_count >= TEAM_MAX_SIZE:
         return None, f'该队已满 {TEAM_MAX_SIZE} 人'
-    db.session.add(TeamMember(user_id=user.id, team_id=team.id))
+    db.session.add(TeamMember(user_id=user.id, contest=slug, team_id=team.id))
     db.session.commit()
     return team, None
 
 
-def leave_team(user):
-    membership = user.membership
+def leave_team(user, contest):
+    slug = _slug(contest)
+    membership = user.membership_in(slug)
     if membership is None:
         return None, '你还没有加入任何队伍'
     team = membership.team
@@ -363,42 +406,47 @@ def leave_team(user):
     return team, None
 
 
-def restorable_team(user):
+def restorable_team(user, contest):
     """该用户可以恢复的队伍：他曾任队长、且已被解散的队（取最近一个）。
 
     独苗队长退队时队伍会被标记解散（`disbanded_at`）而**不是删除**，
     所以队伍行还在——但邀请码作废、队名也仍占着（DB 有 unique 约束）。
     没有恢复入口的话，这个人就被永久挡在自己的队名之外了。
+
+    只在**同一场次**内恢复：别把上一场的队恢复进这一场。
     """
-    if user.team:
+    slug = _slug(contest)
+    if user.team_in(slug):
         return None
     return (Team.query
-            .filter(Team.captain_id == user.id, Team.disbanded_at.isnot(None))
+            .filter(Team.contest == slug,
+                    Team.captain_id == user.id, Team.disbanded_at.isnot(None))
             .order_by(Team.disbanded_at.desc())
             .first())
 
 
-def restore_team(user):
+def restore_team(user, contest):
     """恢复一个已解散的队伍。返回 (team, err)。
 
     - 清掉 disbanded_at，队伍重新可用
     - **邀请码换新的**：旧码已经废了，且可能已泄露给（前）队员
     - 把该用户重新加回成员
     """
-    if user.team:
-        return None, '你已在一支队伍中'
-    team = restorable_team(user)
+    slug = _slug(contest)
+    if user.team_in(slug):
+        return None, '你已在本场次的一支队伍中'
+    team = restorable_team(user, contest)
     if team is None:
         return None, '没有可恢复的队伍'
     team.disbanded_at = None
     team.invite_code = _gen_invite_code()
-    db.session.add(TeamMember(user_id=user.id, team_id=team.id))
+    db.session.add(TeamMember(user_id=user.id, contest=slug, team_id=team.id))
     db.session.commit()
     return team, None
 
 
-def reset_invite_code(user):
-    team = user.team
+def reset_invite_code(user, contest):
+    team = user.team_in(_slug(contest))
     if team is None:
         return None, '你还没有加入队伍'
     if team.captain_id != user.id:
@@ -408,8 +456,8 @@ def reset_invite_code(user):
     return team, None
 
 
-def transfer_captain(user, target_user_id):
-    team = user.team
+def transfer_captain(user, contest, target_user_id):
+    team = user.team_in(_slug(contest))
     if team is None:
         return None, '你还没有加入队伍'
     if team.captain_id != user.id:
@@ -480,6 +528,7 @@ def quota_payload(team):
         return {'used': 0, 'limit': limit}
     since = last_reset_utc()
     used = Submission.query.filter(
+        Submission.contest == team.contest,      # 队名只在本场次内唯一
         Submission.team_name == team.name,
         Submission.created_at >= since,
     ).count()
@@ -501,7 +550,7 @@ def _safe_next(default):
 def register_page():
     if request.method == 'GET':
         if current_user():
-            return redirect(url_for('auth.team_page'))
+            return redirect(default_landing_url())
         return render_template('register.html')
 
     data = request.form
@@ -514,14 +563,14 @@ def register_page():
         return render_template('register.html', form=data), 400
     _login_session(user)
     flash(f'注册成功，欢迎 {user.name}', 'success')
-    return redirect(_safe_next(url_for('auth.team_join_page')))
+    return redirect(_safe_next(default_landing_url()))
 
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login_page():
     if request.method == 'GET':
         if current_user():
-            return redirect(url_for('index'))
+            return redirect(default_landing_url())
         return render_template('login.html')
 
     email = request.form.get('email') or ''
@@ -535,14 +584,14 @@ def login_page():
         return render_template('login.html', form=request.form), 401
     _login_session(user)
     flash(f'已登录：{user.name}', 'success')
-    return redirect(_safe_next(url_for('index')))
+    return redirect(_safe_next(default_landing_url()))
 
 
 @bp.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password_page():
     if request.method == 'GET':
         if current_user():
-            return redirect(url_for('auth.team_page'))
+            return redirect(default_landing_url())
         return render_template('forgot_password.html')
 
     email = request.form.get('email') or ''
@@ -579,96 +628,11 @@ def reset_password_page():
 def logout_page():
     session.clear()
     flash('已退出登录', 'success')
-    return redirect(url_for('index'))
-
-
-@bp.route('/team')
-@login_required
-def team_page():
-    user = current_user()
-    team = user.team
-    my_subs = []
-    used = 0
-    if team:
-        since = last_reset_utc()
-        my_subs = (Submission.query
-                   .filter_by(team_name=team.name)
-                   .order_by(Submission.created_at.desc())
-                   .limit(20).all())   # 经 submission_rows() 整理后再传给模板
-        used = Submission.query.filter(
-            Submission.team_name == team.name, Submission.created_at >= since
-        ).count()
-    return render_template(
-        'team.html', user=user, team=team,
-        members=[m.user for m in team.members] if team else [],
-        quota={'used': used, 'limit': current_app.config['DAILY_QUOTA']},
-        submissions=submission_rows(my_subs),
-    )
-
-
-@bp.route('/team/join')
-@login_required
-def team_join_page():
-    user = current_user()
-    if user.team:
-        return redirect(url_for('auth.team_page'))
-    return render_template('team_join.html', user=user,
-                           restorable=restorable_team(user))
-
-
-@bp.route('/team/restore', methods=['POST'])
-@login_required
-def team_restore_page():
-    team, err = restore_team(current_user())
-    if err:
-        flash(err, 'error')
-        return redirect(url_for('auth.team_join_page'))
-    flash(f'已恢复队伍「{team.name}」，邀请码已更新为 {team.invite_code}', 'success')
-    return redirect(url_for('auth.team_page'))
-
-
-@bp.route('/team/create', methods=['POST'])
-@login_required
-def team_create_page():
-    _, err = create_team(current_user(), request.form.get('name'))
-    flash(err or '队伍创建成功', 'error' if err else 'success')
-    return redirect(url_for('auth.team_page'))
-
-
-@bp.route('/team/join', methods=['POST'])
-@login_required
-def team_join_submit():
-    _, err = join_team(current_user(), request.form.get('invite_code'))
-    flash(err or '入队成功', 'error' if err else 'success')
-    return redirect(url_for('auth.team_page'))
-
-
-@bp.route('/team/leave', methods=['POST'])
-@login_required
-def team_leave_page():
-    _, err = leave_team(current_user())
-    flash(err or '已退出队伍', 'error' if err else 'success')
-    return redirect(url_for('auth.team_page'))
-
-
-@bp.route('/team/reset-code', methods=['POST'])
-@login_required
-def team_reset_code_page():
-    _, err = reset_invite_code(current_user())
-    flash(err or '邀请码已重置', 'error' if err else 'success')
-    return redirect(url_for('auth.team_page'))
-
-
-@bp.route('/team/transfer', methods=['POST'])
-@login_required
-def team_transfer_page():
-    _, err = transfer_captain(current_user(), request.form.get('to_user_id'))
-    flash(err or '队长已转让', 'error' if err else 'success')
-    return redirect(url_for('auth.team_page'))
+    return redirect(default_landing_url())
 
 
 # ---------------------------------------------------------------------------
-# JSON API
+# JSON API（全局账号相关；场次相关的 API 见 app.py 的 contest 蓝图）
 # ---------------------------------------------------------------------------
 
 def _payload():
@@ -724,44 +688,4 @@ def api_reset_password():
 @bp.route('/api/auth/logout', methods=['POST'])
 def api_logout():
     session.clear()
-    return '', 204
-
-
-@bp.route('/api/me')
-@api_login_required
-def api_me():
-    user = current_user()
-    team = user.team
-    return jsonify({
-        'user': user.to_dict(),
-        'team': team_payload(team, with_members=True),
-        'quota': quota_payload(team),
-    })
-
-
-@bp.route('/api/team', methods=['POST'])
-@api_login_required
-def api_team_create():
-    team, err = create_team(current_user(), _payload().get('name'))
-    if err:
-        return jsonify({'error': err}), 409
-    return jsonify({'team': team_payload(team, with_members=True)}), 201
-
-
-@bp.route('/api/team/join', methods=['POST'])
-@api_login_required
-def api_team_join():
-    team, err = join_team(current_user(), _payload().get('invite_code'))
-    if err:
-        status = 404 if '无效' in err else (410 if '已满' in err else 409)
-        return jsonify({'error': err}), status
-    return jsonify({'team': team_payload(team, with_members=True)}), 200
-
-
-@bp.route('/api/team/leave', methods=['POST'])
-@api_login_required
-def api_team_leave():
-    _, err = leave_team(current_user())
-    if err:
-        return jsonify({'error': err}), 409
     return '', 204

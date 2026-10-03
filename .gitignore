@@ -6,6 +6,8 @@ venv/
 
 # 平台运行时产物
 platform.db
+# 迁移前自动生成的备份（tools/migrate_multicontest.py）；注意 gitignore 不支持行尾注释
+platform.db.bak-*
 submissions/
 test_data/
 

@@ -21,8 +21,9 @@
 from datetime import datetime, timedelta, timezone
 
 from models import Submission
-from problems import problem_ids, get_problem
-from riscv_problems import get_eval_spec, case_label
+from contests import (get_contest, default_contest, get_problem,
+                      contest_problem_ids, get_eval_spec)
+from riscv_problems import case_label
 from scoring import (parse_details, field_best, score_details, per_case_costs)
 
 UTC8 = timezone(timedelta(hours=8))
@@ -46,21 +47,24 @@ def last_reset_utc(now=None):
     return reset_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def build_standings(problem="all", stage=1):
+def build_standings(problem="all", stage=1, contest=None):
     """
     返回 {columns, rows, total_label}。
     problem = "all" → 按各题总分排名，逐题列出；
     problem = 题目 id → 只按该题排名，只出该列。
+    contest = 场次 slug（或 Contest）；None → 默认场次。
 
-    统计范围是**全部历史有效提交**（不按 05:00 结算点裁剪窗口）——
-    榜单是跨日累计的，配额重置不影响已取得的成绩。
+    统计范围是**本场次的全部历史有效提交**（不按 05:00 结算点裁剪窗口）——
+    榜单是跨场次隔离、跨日累计的；配额重置不影响已取得的成绩。
     """
-    ids = problem_ids()
+    c = contest if hasattr(contest, 'slug') else (get_contest(contest) or default_contest())
+    ids = contest_problem_ids(c)
     only = problem if problem in ids else None
     scoring_cols = [only] if only else ids          # 参与计分的题
     display_cols = [] if only else ids              # 表格里逐题展示的列
 
     query = Submission.query.filter(
+        Submission.contest == c.slug,               # 场次隔离：绝不混入别场次的提交
         Submission.status.in_(VALID_STATUSES),
     )
     if only:
@@ -75,7 +79,7 @@ def build_standings(problem="all", stage=1):
     # 单题视图：把该题的 10 个数据点铺成 10 列（逐点得分）
     size_cols = []
     if only:
-        _spec = get_eval_spec(only)
+        _spec = get_eval_spec(only, c)
         if _spec:
             size_cols = [(n, case_label(_spec, i))
                          for i, n in enumerate(_spec['data_point_sizes'])]
@@ -153,7 +157,7 @@ def build_standings(problem="all", stage=1):
     # 列头显示标题而不是 id —— id 形如 matmul，会与「定点矩阵乘」的题名对不上
     column_labels = {}
     for pid in display_cols:
-        _p = get_problem(pid)
+        _p = get_problem(c, pid)
         column_labels[pid] = _p["title"] if _p else pid
 
     return {

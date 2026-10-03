@@ -2,6 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from contests import DEFAULT_SLUG
+
 db = SQLAlchemy()
 
 TEAM_MAX_SIZE = 3  # 每队人数上限（策划案：每队 1~3 人）
@@ -9,6 +11,7 @@ TEAM_MAX_SIZE = 3  # 每队人数上限（策划案：每队 1~3 人）
 
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
     team_name = db.Column(db.String(80), nullable=False)
     problem_id = db.Column(db.String(20), nullable=False)  # 如 'matmul'
     code_path = db.Column(db.String(200), nullable=False)   # 存储源码路径
@@ -21,6 +24,7 @@ class Submission(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'contest': self.contest,
             'team': self.team_name,
             'problem': self.problem_id,
             'status': self.status,
@@ -43,8 +47,9 @@ class User(db.Model):
     role = db.Column(db.String(16), nullable=False, default='player')  # player / admin
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    membership = db.relationship(
-        'TeamMember', backref='user', uselist=False,
+    # 一个用户可在**不同场次**各加入一支队伍（每场一支），故是一对多。
+    memberships = db.relationship(
+        'TeamMember', backref='user', lazy=True,
         cascade='all, delete-orphan'
     )
 
@@ -58,9 +63,22 @@ class User(db.Model):
     def is_admin(self):
         return self.role == 'admin'
 
-    @property
-    def team(self):
-        return self.membership.team if self.membership else None
+    def membership_in(self, contest_slug):
+        """该用户在某场次里的成员关系（没有则 None）。
+
+        **必须显式传场次**——不要做成读请求上下文 `g.contest` 的单数属性：
+        评测 worker 线程与 CLI 工具都没有请求上下文，那样会**静默取错场次**。
+        """
+        slug = getattr(contest_slug, 'slug', contest_slug)
+        for m in self.memberships:
+            if m.contest == slug:
+                return m
+        return None
+
+    def team_in(self, contest_slug):
+        """该用户在某场次里的队伍（没有则 None）。"""
+        m = self.membership_in(contest_slug)
+        return m.team if m else None
 
     def to_dict(self):
         return {
@@ -92,7 +110,10 @@ class PasswordReset(db.Model):
 
 
 class SubmitThrottle(db.Model):
-    """提交间隔限流：记录每个选手最近一次**成功**提交的时间。
+    """提交间隔限流：记录每个选手**在每场**最近一次成功提交的时间。
+
+    主键是 `(user_id, contest)`——**每场各自计时**：在 A 场刚交完，不影响在 B 场
+    立刻提交。用户账号是全局的，但节流不该跨场次互相牵连。
 
     刻意做成独立的表而不是给 Submission 加列——`create_all()` 只创建缺失的表、
     不会 ALTER 既有表，所以加列在老库上会静默失效（见 docs/08 的说明）。
@@ -100,15 +121,24 @@ class SubmitThrottle(db.Model):
     __tablename__ = 'submit_throttle'
 
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    contest = db.Column(db.String(40), primary_key=True, default=DEFAULT_SLUG)
     last_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Team(db.Model):
-    """P2 队伍。邀请码为入队/再入队的索引。"""
+    """P2 队伍。邀请码为入队/再入队的索引。
+
+    队伍**按场次隔离**：队名只在同一场次内唯一（`uq_team_contest_name`），
+    不同场次可以重名。邀请码仍全局唯一（8 位随机），入队时再校验场次是否匹配。
+    """
     __tablename__ = 'teams'
+    __table_args__ = (
+        db.UniqueConstraint('contest', 'name', name='uq_team_contest_name'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(60), unique=True, nullable=False)
+    contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
+    name = db.Column(db.String(60), nullable=False)
     invite_code = db.Column(db.String(12), unique=True, nullable=False, index=True)
     captain_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -130,6 +160,7 @@ class Team(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'contest': self.contest,
             'name': self.name,
             'invite_code': self.invite_code,
             'captain_id': self.captain_id,
@@ -138,10 +169,14 @@ class Team(db.Model):
 
 
 class TeamMember(db.Model):
-    """队伍成员。user_id 唯一 = 每人限一队。"""
+    """队伍成员。`(user_id, contest)` 唯一 = 每人每场限一队。"""
     __tablename__ = 'team_members'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'contest', name='uq_member_user_contest'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
     team_id = db.Column(db.Integer, db.ForeignKey('teams.id'), nullable=False, index=True)
     joined_at = db.Column(db.DateTime, default=datetime.utcnow)

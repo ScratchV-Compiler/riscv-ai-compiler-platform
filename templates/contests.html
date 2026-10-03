@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}全部场次 · 评测平台{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>全部场次</h1>
+  <p class="lede">
+    平台同时承载多场竞赛。每场有独立的赛题、榜单与队伍——同一道题在不同场次可以跑在不同数据上。
+  </p>
+</div>
+
+<section class="panel" aria-labelledby="listHeading">
+  <div class="panel-head">
+    <h2 id="listHeading">场次列表</h2>
+    <span class="text-body-secondary small">共 {{ contests|length }} 场</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table table-standings align-middle">
+      <thead>
+        <tr>
+          <th scope="col">场次</th>
+          <th scope="col">阶段</th>
+          <th scope="col">状态</th>
+          <th scope="col">赛题</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contests %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contest.index', slug=c.slug) }}">{{ c.title }}</a>
+            <span class="badge-id mono ms-2">{{ c.slug }}</span>
+          </td>
+          <td class="small text-body-secondary">{{ c.stage_label }}</td>
+          <td>
+            <span class="vbadge {{ 'vbadge-accepted' if c.is_running else ('vbadge-pending' if c.status == 'upcoming' else 'vbadge-error') }}">
+              {{ c.status_label }}
+            </span>
+          </td>
+          <td class="n small text-body-secondary">
+            {{ c.problem_ids|join('、') if c.problem_ids else '全部' }}
+          </td>
+          <td>
+            <a class="btn btn-quiet btn-sm" href="{{ url_for('contest.standings_page', slug=c.slug) }}">榜单</a>
+            <a class="btn btn-brand btn-sm" href="{{ url_for('contest.index', slug=c.slug) }}">进入</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot text-body-secondary small">
+    场次由服务端配置注册（<span class="mono">contests.py</span>）。新增一场 = 加一条配置并重启。
+  </div>
+</section>
+{% endblock %}

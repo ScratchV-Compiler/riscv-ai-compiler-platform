@@ -37,16 +37,22 @@ from flask import current_app
 
 import riscv_oracle
 import riscv_runner
-from riscv_problems import get_eval_spec, case_size
+from contests import get_eval_spec        # 场次感知（contest=None → 默认场次）
+from riscv_problems import case_size
 
 # 选手源码里禁止出现的汇编指示符：它们能在**汇编阶段**读宿主任意可读文件
 # （.incbin "/etc/passwd"），把编译期变成读取通道。单文件提交用不到它们。
 FORBIDDEN_DIRECTIVES = ('.incbin', '.include')
 
 
-def run_evaluation(submission_id, team_name, problem_id, code_path):
-    """执行评测，返回 (score, details)。契约见模块 docstring。"""
-    spec = get_eval_spec(problem_id)
+def run_evaluation(submission_id, team_name, problem_id, code_path, contest=None):
+    """执行评测，返回 (score, details)。契约见模块 docstring。
+
+    `contest` 为场次（Contest 对象或 slug）；None → 默认场次，与引入多场次前等价。
+    评测规格（baseline / 参考解 / 数据点规模）按场次取，因此同一道题在不同场次
+    可以跑在不同数据上。
+    """
+    spec = get_eval_spec(problem_id, contest)
     if spec is None:
         return 0.0, _details('unsupported', '该题暂未开放评测', error='unsupported',
                              problem=problem_id)
@@ -90,9 +96,9 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
         shutil.copyfile(code_path, player)
         os.chmod(player, 0o644)
 
-        # 官方用例种子：部署时经 PLATFORM_EVAL_SEEDS 下发，跑在固定输入上，
-        # 与 baseline 严格可比；未配置则退回随机（开发用）。
-        official = current_app.config.get('EVAL_SEEDS')
+        # 官方用例种子：优先取场次自带的 seeds，其次部署时经 PLATFORM_EVAL_SEEDS
+        # 下发的全局值。跑在固定输入上才能与 baseline 严格可比；未配置则退回随机（开发用）。
+        official = spec.get('seeds') or current_app.config.get('EVAL_SEEDS')
         rng = random.Random(random.randrange(2 ** 31))
         cases = []
         earned = 0.0
