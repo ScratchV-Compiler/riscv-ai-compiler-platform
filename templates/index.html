@@ -3,7 +3,7 @@
 
 {% block content %}
 <section class="hero">
-  <span class="chip"><span class="dot" aria-hidden="true"></span>{{ contest.stage_label }} · {{ contest.status_label }}</span>
+  <span class="chip"><span class="dot" aria-hidden="true"></span>{{ contest.status_display }}</span>
   <h1>{{ contest.title }}</h1>
   <p class="lede">
     提交 RISC-V 汇编，平台在 qemu 上真实执行，按正确性与代价（指令数 + 访存）计分。

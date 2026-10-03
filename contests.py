@@ -35,7 +35,20 @@
 与旧的单场行为逐字节等价——这样评测链路（evaluator / standings）的旧调用点可以不改。
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+_BEIJING = timezone(timedelta(hours=8))
+
+
+def beijing(y, mo, d, h=0, mi=0):
+    """**北京时间** → 存入用的朴素 UTC。配置赛程时用它，免得算错时区：
+
+        start_at=beijing(2026, 11, 1, 9, 0)      # 北京时间 11-01 09:00
+
+    展示时 `standings.fmt_local` 会再转回 UTC+8。
+    """
+    return (datetime(y, mo, d, h, mi, tzinfo=_BEIJING)
+            .astimezone(timezone.utc).replace(tzinfo=None))
 
 import riscv_problems as RP
 from problems import PROBLEMS
@@ -56,12 +69,24 @@ STATUS_LABEL = {
 
 
 @dataclass(frozen=True)
+class Stage:
+    """场次内部的一个**阶段**（如 Stage 1 / Stage 2），仅用于**赛程展示**。
+
+    阶段不参与任何闸门（不做「当前阶段」推断）；只把各阶段的时间列出来。
+    """
+    label: str
+    start_at: 'datetime | None' = None
+    end_at: 'datetime | None' = None
+
+
+@dataclass(frozen=True)
 class Contest:
     """一场竞赛。
 
     - `slug`：URL 段（`/c/<slug>/...`），全局唯一、简短、稳定（发布后别改，会断链）
     - `title` / `short_title`：全称（页脚/标题）与短名（导航/品牌条）
-    - `stage_label`：取代模板里硬编码的「Stage 1 · 线上赛」，给这一场起个副标题
+    - 没有「阶段副标题」——当前处于哪个阶段由**日期**推出，并拼进**状态**里显示
+      （如「进行中 · Stage 1」），见 `status_display`
     - `status`：见模块 docstring；决定能否提交
     - `start_at` / `end_at`：朴素 UTC，仅展示用（可为 None）
     - `problem_ids`：本场试卷（有序）；空元组 = 用整个题册
@@ -73,12 +98,22 @@ class Contest:
     slug: str
     title: str
     short_title: str
-    stage_label: str
     status: str = RUNNING
+    # 起止时间（朴素 UTC，展示时转 UTC+8）。start_at/end_at 是**比赛**起止；
+    # registration_start/end 是**报名**起止（只有需报名的场次才用得上）。
     start_at: 'datetime | None' = None
     end_at: 'datetime | None' = None
+    registration_start: 'datetime | None' = None
+    registration_end: 'datetime | None' = None
+    # 阶段（仅展示）：如 Stage 1 / Stage 2 各自的起止。
+    stages: tuple = ()
+    # 报名**邀请码**：需报名的场次必须配（报名时要填对）。
+    registration_code: 'str | None' = None
     problem_ids: tuple = ()
     default: bool = False
+    # 是否需要**个人报名**：True → 未报名不能建队/入队（也就不能提交）。
+    # False → 无需报名，建队/入队即参赛（与引入报名机制之前一致）。
+    requires_registration: bool = False
     eval_overrides: dict = field(default_factory=dict)
     baseline_file: 'str | None' = None
     seeds: 'tuple | None' = None
@@ -86,6 +121,44 @@ class Contest:
     @property
     def is_running(self):
         return self.status == RUNNING
+
+    @property
+    def is_enterable(self):
+        """能否**进入**场次页面。
+
+        未开始 → 进不去（连门都不给，题面/榜单都不提前放）；
+        进行中、已结束 → 可进（已结束要能回看归档）。
+        这是比 `is_open` 更外一层的闸：先进得去，才谈得上参不参加。
+        """
+        return self.status != UPCOMING
+
+    @property
+    def requires_enrollment_to_view(self):
+        """看内容是否**必须先报名**：需报名 **且未结束**。
+
+        已结束的场次对**所有人开放**（归档公开）——比赛结束后报名已无意义，
+        题面与榜单应可自由回看。
+        """
+        return self.requires_registration and self.status != ENDED
+
+    @property
+    def registration_open(self):
+        """报名窗口。
+
+        - **配了报名起止日期** → 按日期：早于开始不能报，晚于截止不能报；
+        - **没配日期** → 按状态兜底：未开始 + 进行中都能报，已结束截止。
+
+        未开始的场次虽然进不去（`is_enterable` 为 False），但可以报名——
+        报名入口在**赛事目录页**（`/`），不在场次内页。
+        """
+        if self.registration_start is None and self.registration_end is None:
+            return self.status in (UPCOMING, RUNNING)
+        now = datetime.utcnow()
+        if self.registration_start and now < self.registration_start:
+            return False
+        if self.registration_end and now > self.registration_end:
+            return False
+        return True
 
     @property
     def is_open(self):
@@ -105,6 +178,26 @@ class Contest:
     def status_label(self):
         return STATUS_LABEL.get(self.status, self.status)
 
+    @property
+    def current_stage(self):
+        """当前所处的阶段（按 `stages` 的日期判断）；不在任何阶段内则 None。"""
+        if not self.stages:
+            return None
+        now = datetime.utcnow()
+        for st in self.stages:
+            if st.start_at and st.end_at and st.start_at <= now <= st.end_at:
+                return st
+        return None
+
+    @property
+    def status_display(self):
+        """展示用状态：进行中时带上当前阶段，如「进行中 · Stage 1」。
+
+        当前阶段的**唯一**来源——页面上不再有独立的「阶段」标签。
+        """
+        st = self.current_stage
+        return f'{self.status_label} · {st.label}' if st else self.status_label
+
 
 # ---------------------------------------------------------------------------
 # 注册表（加一场 = 加一条）
@@ -113,12 +206,18 @@ class Contest:
 _CONTESTS = [
     Contest(
         slug=DEFAULT_SLUG,
-        title='RISC-V AI 编译器挑战赛',
-        short_title='RISC-V AI',
+        title='内测比赛1',
+        short_title='内测比赛1',
         # Stage 1 与 Stage 2 属于**同一场竞赛**；这里只是当前展示的阶段副标题。
-        stage_label='Stage 1 · 线上赛',
         status=RUNNING,
         default=True,
+        # 赛程（北京时间）。整体窗口覆盖两阶段；阶段分列见 stages。
+        start_at=beijing(2026, 10, 1, 8, 0),
+        end_at=beijing(2026, 11, 30, 8, 0),
+        stages=(
+            Stage('Stage 1', beijing(2026, 10, 1, 8, 0), beijing(2026, 10, 31, 8, 0)),
+            Stage('Stage 2', beijing(2026, 10, 31, 8, 0), beijing(2026, 11, 30, 8, 0)),
+        ),
         problem_ids=('add', 'matmul', 'reducesum'),
         # 不覆盖任何东西：沿用 riscv_problems.EVAL_SPECS 与 data/baseline.json，
         # 行为与引入多场次之前**逐字节等价**。
@@ -129,10 +228,18 @@ _CONTESTS = [
     # 状态为「未开始」——页面可看，但不能提交（生命周期闸门）。
     Contest(
         slug='demo',
-        title='演示场次（多场次机制示例）',
-        short_title='演示赛',
-        stage_label='演示场 · 筹备中',
-        status=UPCOMING,
+        title='内测比赛2',
+        short_title='内测比赛2',
+        status=RUNNING,
+        requires_registration=True,   # 演示「需报名」：未报名不能看内容/组队
+        registration_code='demo',     # 报名邀请码
+        # 赛程与主赛事相同：10.01–10.31（S1）、10.31–11.30（S2）
+        start_at=beijing(2026, 10, 1, 8, 0),
+        end_at=beijing(2026, 11, 30, 8, 0),
+        stages=(
+            Stage('Stage 1', beijing(2026, 10, 1, 8, 0), beijing(2026, 10, 31, 8, 0)),
+            Stage('Stage 2', beijing(2026, 10, 31, 8, 0), beijing(2026, 11, 30, 8, 0)),
+        ),
         problem_ids=('add', 'matmul', 'reducesum'),
         baseline_file='data/contests/demo/baseline.json',
         # 局部覆盖：本场把归约求和每点分值调成 5（仅为演示覆盖语义，非真实数据）

@@ -11,7 +11,7 @@
 
 ## 做了什么
 
-- `submission`：加 `contest` 列（旧行填默认场次）+ 索引
+- `submission`：加 `contest` 列（旧行填默认场次）与 `user_id` 列（提交人，配额按人计用）+ 索引
 - `teams`：加 `contest` 列，唯一约束由 `UNIQUE(name)` 改为 `UNIQUE(contest,name)`
 - `team_members`：加 `contest` 列，唯一约束由 `UNIQUE(user_id)` 改为 `UNIQUE(user_id,contest)`
 - `submit_throttle`：主键由 `user_id` 改为 `(user_id,contest)`（**节流状态可丢**，直接重建）
@@ -73,8 +73,10 @@ def plan(conn):
     tables = _table_names(conn)
     actions = []
 
-    if 'submission' in tables and 'contest' not in _columns(conn, 'submission'):
-        actions.append('submission: 加 contest 列 + 索引')
+    if 'submission' in tables:
+        scols = _columns(conn, 'submission')
+        if 'contest' not in scols or 'user_id' not in scols:
+            actions.append('submission: 补缺列（contest / user_id）+ 索引')
 
     if 'teams' in tables:
         tcols = _columns(conn, 'teams')
@@ -150,10 +152,18 @@ def _rebuild_submit_throttle(conn):
         )''')
 
 
-def _add_submission_column(conn):
-    conn.execute(f"ALTER TABLE submission ADD COLUMN contest VARCHAR(40) "
-                 f"NOT NULL DEFAULT '{DEFAULT_SLUG}'")
-    conn.execute('CREATE INDEX ix_submission_contest ON submission (contest)')
+def _add_submission_columns(conn):
+    """给 submission 补缺列（各自判断，故可幂等重跑）。"""
+    cols = _columns(conn, 'submission')
+    if 'contest' not in cols:
+        conn.execute(f"ALTER TABLE submission ADD COLUMN contest VARCHAR(40) "
+                     f"NOT NULL DEFAULT '{DEFAULT_SLUG}'")
+        conn.execute('CREATE INDEX ix_submission_contest ON submission (contest)')
+    if 'user_id' not in cols:
+        # 提交人（配额按人计要用）。老数据为 NULL，不计入任何人的配额。
+        conn.execute('ALTER TABLE submission ADD COLUMN user_id INTEGER '
+                     'REFERENCES users (id)')
+        conn.execute('CREATE INDEX ix_submission_user_id ON submission (user_id)')
 
 
 def migrate(conn, actions):
@@ -161,7 +171,7 @@ def migrate(conn, actions):
     conn.execute('PRAGMA foreign_keys=OFF')
     for a in actions:
         if a.startswith('submission:'):
-            _add_submission_column(conn)
+            _add_submission_columns(conn)
         elif a.startswith('teams:'):
             _rebuild_teams(conn)
         elif a.startswith('team_members:'):

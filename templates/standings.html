@@ -12,7 +12,7 @@
 
 <section class="panel" aria-labelledby="lbHeading">
   <div class="panel-head">
-    <h2 id="lbHeading">{{ contest.stage_label }} 榜单</h2>
+    <h2 id="lbHeading">榜单</h2>
     <span class="text-body-secondary small">每 15 秒自动刷新</span>
   </div>
 
@@ -34,7 +34,7 @@
         {% for c in contests %}
         <a href="{{ url_for('contest.standings_page', slug=c.slug, problem=problem) }}"
            {% if c.slug == contest.slug %}aria-current="true"{% endif %}
-           title="{{ c.title }}（{{ c.status_label }}）">{{ c.short_title }}</a>
+           title="{{ c.title }}（{{ c.status_display }}）">{{ c.short_title }}</a>
         {% endfor %}
       </span>
     </span>

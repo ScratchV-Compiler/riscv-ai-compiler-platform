@@ -42,9 +42,9 @@
         <div class="dropdown d-none d-sm-inline-flex">
           <button class="stage-badge dropdown-toggle" type="button" id="contestMenu"
                   data-bs-toggle="dropdown" aria-expanded="false"
-                  aria-label="切换竞赛场次：当前 {{ contest.title }}（{{ contest.status_label }}）">
+                  aria-label="切换竞赛场次：当前 {{ contest.title }}（{{ contest.status_display }}）">
             <span class="dot{% if not contest.is_running %} dot-muted{% endif %}" aria-hidden="true"></span>
-            {% if request.endpoint == 'contests_page' %}选择场次{% else %}{{ contest.stage_label }} · {{ contest.status_label }}{% endif %}
+            {% if request.endpoint == 'contests_page' %}选择场次{% else %}{{ contest.status_display }}{% endif %}
           </button>
           <ul class="dropdown-menu" aria-labelledby="contestMenu">
             {% for c in contests %}
@@ -52,7 +52,7 @@
               <a class="dropdown-item{% if c.slug == contest.slug %} active{% endif %}"
                  href="{{ url_for('contest.index', slug=c.slug) }}">
                 {{ c.short_title }}
-                <span class="text-body-secondary small">· {{ c.status_label }}</span>
+                <span class="text-body-secondary small">· {{ c.status_display }}</span>
               </a>
             </li>
             {% endfor %}
@@ -193,7 +193,7 @@
 
   <footer class="site-footer">
     <div class="container d-flex flex-wrap gap-3 justify-content-between">
-      <span>华东师范大学 · {{ contest.title }} · {{ contest.stage_label }}评测平台</span>
+      <span>华东师范大学 · {{ contest.title }} · 评测平台</span>
       <span class="d-flex gap-3">
         <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题</a>
         <a href="{{ url_for('contest.standings_page', slug=contest.slug) }}">排行榜</a>

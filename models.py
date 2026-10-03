@@ -12,6 +12,8 @@ TEAM_MAX_SIZE = 3  # 每队人数上限（策划案：每队 1~3 人）
 class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
+    # 提交人。配额「按人计」要靠它；老数据没有（None），不计入任何人的配额。
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     team_name = db.Column(db.String(80), nullable=False)
     problem_id = db.Column(db.String(20), nullable=False)  # 如 'matmul'
     code_path = db.Column(db.String(200), nullable=False)   # 存储源码路径
@@ -180,3 +182,36 @@ class TeamMember(db.Model):
     contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
     team_id = db.Column(db.Integer, db.ForeignKey('teams.id'), nullable=False, index=True)
     joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Enrollment(db.Model):
+    """**个人报名**记录：某人报名了某场次，`(user_id, contest)` 唯一。
+
+    只有 `Contest.requires_registration` 为 True 的场次才用得上；未报名者
+    不能建队/入队（也就不能提交）。新表，`create_all()` 会直接建出来。
+    """
+    __tablename__ = 'enrollments'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'contest', name='uq_enroll_user_contest'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class TeamLeaveLog(db.Model):
+    """退队流水：用于「每人每场每天只能退出一次队伍」的限频。
+
+    刻意做成**只增不改的独立表**而不是给 Team/TeamMember 加列——`create_all()`
+    只建缺失的表、不会 ALTER 既有表，所以给老库加列会静默失效；而新表
+    `create_all()` 会直接建出来（这条与 SubmitThrottle 同理）。
+    """
+    __tablename__ = 'team_leave_log'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    contest = db.Column(db.String(40), nullable=False, default=DEFAULT_SLUG, index=True)
+    team_name = db.Column(db.String(60), nullable=False)
+    left_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

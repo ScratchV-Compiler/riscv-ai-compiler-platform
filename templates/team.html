@@ -72,7 +72,7 @@
 </section>
 
 <section class="panel">
-  <div class="panel-head"><h2>今日配额</h2></div>
+  <div class="panel-head"><h2>我的今日配额</h2><span class="text-body-secondary small">按人计</span></div>
   <div class="panel-body">
     {% set pct = (quota.used / quota.limit * 100) if quota.limit else 0 %}
     <div class="d-flex justify-content-between">

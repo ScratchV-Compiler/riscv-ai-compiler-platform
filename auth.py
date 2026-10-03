@@ -19,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect
 
 import mailer
 from models import (db, User, Team, TeamMember, Submission, PasswordReset,
-                    SubmitThrottle, TEAM_MAX_SIZE)
+                    SubmitThrottle, TeamLeaveLog, Enrollment, TEAM_MAX_SIZE)
 from standings import last_reset_utc
 
 bp = Blueprint('auth', __name__)
@@ -319,12 +319,63 @@ def _contest_of(contest):
     return get_contest(contest) or default_contest()
 
 
-def _join_gate(contest):
-    """组队/入队的准入闸：**未开始与已结束的场次都不许参加**。
+def is_enrolled(user, contest):
+    """该用户是否已报名该场次（无需报名的场次一律视为「已报名」）。"""
+    if user is None:
+        return False
+    c = _contest_of(contest)
+    if not c.requires_registration:
+        return True
+    return Enrollment.query.filter_by(user_id=user.id, contest=c.slug).first() is not None
+
+
+def enroll(user, contest, code=None):
+    """个人报名（需**邀请码**）。返回 (ok, err)。
+
+    需报名的场次一律要填对报名邀请码——`.registration_code` 没配就是配置错误，
+    直接拒绝（fail closed），别让「要邀请码的场次」意外变成谁都能报。
+    """
+    if user is None:
+        return None, '请先登录'
+    c = _contest_of(contest)
+    if not c.requires_registration:
+        return None, '本场次无需报名，直接组队即可'
+    if not c.registration_open:
+        return None, f'本场次（{c.title}）{c.status_label}，报名已截止'
+    if Enrollment.query.filter_by(user_id=user.id, contest=c.slug).first():
+        return None, '你已报名本场次'
+    if not c.registration_code:
+        return None, '本场次尚未配置报名邀请码，请联系主办方'
+    if (code or '').strip() != c.registration_code:
+        return None, '报名邀请码不正确，请向主办方确认'
+    db.session.add(Enrollment(user_id=user.id, contest=c.slug))
+    db.session.commit()
+    return c, None
+
+
+def unenroll(user, contest):
+    """取消报名。已有队伍时不允许（先退队）。返回 (ok, err)。"""
+    if user is None:
+        return None, '请先登录'
+    c = _contest_of(contest)
+    rec = Enrollment.query.filter_by(user_id=user.id, contest=c.slug).first()
+    if rec is None:
+        return None, '你还没有报名本场次'
+    if user.team_in(c.slug) is not None:
+        return None, '你在本场次已有队伍，请先退队再取消报名'
+    db.session.delete(rec)
+    db.session.commit()
+    return c, None
+
+
+def _join_gate(user, contest):
+    """组队/入队的准入闸：**未开始/已结束不许参加**；需报名的场次要**已报名**。
     返回 (contest, err)——err 非空则调用方直接返回错误。"""
     c = _contest_of(contest)
     if not c.is_open:
         return c, f'本场次（{c.title}）{c.status_label}，暂不能参加'
+    if c.requires_registration and not is_enrolled(user, c):
+        return c, '本场次需要先报名，请先报名再组队'
     return c, None
 
 
@@ -336,7 +387,7 @@ def _gen_invite_code():
 
 
 def create_team(user, contest, name):
-    c, err = _join_gate(contest)
+    c, err = _join_gate(user, contest)
     if err:
         return None, err
     slug = c.slug
@@ -361,7 +412,7 @@ def create_team(user, contest, name):
 
 
 def join_team(user, contest, invite_code):
-    c, err = _join_gate(contest)
+    c, err = _join_gate(user, contest)
     if err:
         return None, err
     slug = c.slug
@@ -383,27 +434,51 @@ def join_team(user, contest, invite_code):
     return team, None
 
 
+def leaves_today(user, contest):
+    """该用户**本场次**当日（自上次 05:00 结算起）已退队次数。"""
+    slug = _slug(contest)
+    return TeamLeaveLog.query.filter(
+        TeamLeaveLog.user_id == user.id,
+        TeamLeaveLog.contest == slug,
+        TeamLeaveLog.left_at >= last_reset_utc(),
+    ).count()
+
+
+LEAVE_DAILY_LIMIT = 1
+
+
 def leave_team(user, contest):
     slug = _slug(contest)
     membership = user.membership_in(slug)
     if membership is None:
         return None, '你还没有加入任何队伍'
+    # 每人每场每天只能退出一次：防止靠「退队→换队」来回腾挪
+    if leaves_today(user, slug) >= LEAVE_DAILY_LIMIT:
+        return None, '每人每天只能退出一次队伍，请明天再试'
     team = membership.team
+    # 队长在多人的队里必须先转让——这是**会被拒**的情况，别记流水
+    if team is not None and team.captain_id == user.id and team.member_count > 1:
+        return None, '你是队长，请先转让队长后再退队'
+
+    # 到这里确定真的会退出：记一条退队流水
+    _note_leave(user, slug, team.name if team else '')
+
     if team is None:
         db.session.delete(membership)
         db.session.commit()
         return None, '已退出'
     if team.captain_id == user.id:
-        if team.member_count > 1:
-            return None, '你是队长，请先转让队长后再退队'
         # 队长的独苗队伍：退队即解散
         team.disbanded_at = datetime.utcnow()
-        db.session.delete(membership)
-        db.session.commit()
-        return team, None
     db.session.delete(membership)
     db.session.commit()
     return team, None
+
+
+def _note_leave(user, slug, team_name):
+    """记一条退队流水（供每日退队限频）。"""
+    db.session.add(TeamLeaveLog(user_id=user.id, contest=slug,
+                                team_name=team_name, left_at=datetime.utcnow()))
 
 
 def restorable_team(user, contest):
@@ -522,17 +597,26 @@ def team_payload(team, with_members=False):
     return data
 
 
-def quota_payload(team):
-    limit = current_app.config['DAILY_QUOTA']
-    if team is None:
-        return {'used': 0, 'limit': limit}
-    since = last_reset_utc()
-    used = Submission.query.filter(
-        Submission.contest == team.contest,      # 队名只在本场次内唯一
-        Submission.team_name == team.name,
-        Submission.created_at >= since,
+def user_quota_used(user, contest):
+    """该用户**本场次**当日（自上次 05:00 结算起）的提交次数。
+
+    配额**按人计**（不是按队）：换队不会刷新额度，也就堵掉了
+    「刷满配额 → 退队 → 换个队名 → 又有额度」这条路径。
+    老提交没有记录提交人（user_id 为 NULL），不计入任何人。
+    """
+    slug = getattr(contest, 'slug', contest)
+    return Submission.query.filter(
+        Submission.contest == slug,
+        Submission.user_id == user.id,
+        Submission.created_at >= last_reset_utc(),
     ).count()
-    return {'used': used, 'limit': limit}
+
+
+def quota_payload(user, contest):
+    limit = current_app.config['DAILY_QUOTA']
+    if user is None:
+        return {'used': 0, 'limit': limit}
+    return {'used': user_quota_used(user, contest), 'limit': limit}
 
 
 # ---------------------------------------------------------------------------

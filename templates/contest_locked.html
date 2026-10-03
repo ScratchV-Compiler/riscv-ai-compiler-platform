@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% set need_enroll = (reason == 'need_enroll') %}
+{% block title %}{{ contest.title }} · {{ '需报名' if need_enroll else '未开放' }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ '本场次需先报名' if need_enroll else '本场次未开放' }}</h1>
+  <p class="lede">{{ contest.title }}</p>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ contest.status_display }}</h2>
+  </div>
+  <div class="panel-body">
+    {% if need_enroll %}
+    <div class="notice notice-warn mb-3" role="status">
+      <div>
+        <strong>「{{ contest.title }}」需要先报名才能查看内容与参赛。</strong>
+        报名后即可进入本场次。
+      </div>
+    </div>
+    {% if not current_user %}
+    <a class="btn btn-brand mb-2" href="{{ url_for('auth.login_page', next=request.path) }}">登录并报名</a>
+    {% elif contest.registration_open %}
+    <form method="post" action="{{ url_for('contest.enroll_page', slug=contest.slug) }}"
+          class="d-flex gap-2 align-items-center mb-2" style="max-width: 22rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('contest.index', slug=contest.slug) }}">
+      <input type="text" name="code" class="form-control" placeholder="报名邀请码"
+             required autocomplete="off">
+      <button class="btn btn-brand" type="submit">报名</button>
+    </form>
+    {% else %}
+    <p class="text-body-secondary">报名已截止。</p>
+    {% endif %}
+
+    {% else %}
+    <div class="notice notice-info mb-3" role="status">
+      <div>
+        <strong>本场次{{ contest.status_display }}，尚未开放。</strong>
+        场次开始后才能进入查看赛题与榜单。
+      </div>
+    </div>
+    {# 未开始但需报名的场次：这里也给一个报名入口 #}
+    {% if contest.requires_registration %}
+      {% if enrolled %}
+      <p class="mb-2"><span class="vbadge vbadge-accepted">已报名</span> 你已报名本场次，开赛即可参赛。</p>
+      {% elif not current_user %}
+      <a class="btn btn-brand mb-2" href="{{ url_for('auth.login_page', next=request.path) }}">登录并报名</a>
+      {% elif contest.registration_open %}
+      <form method="post" action="{{ url_for('contest.enroll_page', slug=contest.slug) }}"
+            class="d-flex gap-2 align-items-center mb-2" style="max-width: 22rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ url_for('contests_page') }}">
+        <input type="text" name="code" class="form-control" placeholder="报名邀请码"
+               required autocomplete="off">
+        <button class="btn btn-brand" type="submit">报名</button>
+      </form>
+      {% endif %}
+    {% endif %}
+    {% endif %}
+
+    <a class="btn btn-quiet" href="{{ url_for('contests_page') }}">返回赛事列表</a>
+  </div>
+</section>
+{% endblock %}

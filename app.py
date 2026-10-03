@@ -5,20 +5,21 @@ from flask import (Flask, request, jsonify, render_template, abort, flash,
                    redirect, url_for, g, Blueprint)
 
 from config import Config
-from models import db, Submission
+from models import db, Submission, Enrollment
 from tasks import add_task, start_worker, queue_depth, reap_stale_running
 from contests import (get_contest, default_contest, all_contests,
                       get_problem, contest_problems, contest_problem_ids,
                       submittable_problems, get_eval_spec, specs_for)
 from riscv_problems import case_elements, case_label, case_purpose
-from standings import build_standings, last_reset_utc
+from standings import build_standings, last_reset_utc, fmt_local
 from scoring import build_score_table, parse_details
 import riscv_runner
 from auth import (bp as auth_bp, csrf, current_user, login_required,
                   api_login_required, submit_wait_seconds, mark_submitted,
                   format_wait, submission_rows, team_payload, quota_payload,
-                  create_team, join_team, leave_team, restorable_team,
-                  restore_team, reset_invite_code, transfer_captain)
+                  user_quota_used, create_team, join_team, leave_team,
+                  restorable_team, restore_team, reset_invite_code,
+                  transfer_captain, is_enrolled, enroll, unenroll)
 from seed import seed_demo_submissions
 
 app = Flask(__name__)
@@ -47,6 +48,42 @@ def _pull_contest(endpoint, values):
     if c is None:
         abort(404)
     g.contest = c
+
+
+# 报名/取消报名**不受**「未开始进不去」的限制——报名恰恰要能在开赛前做
+_ENROLL_ENDPOINTS = {'contest.enroll_page', 'contest.unenroll_page'}
+
+
+@contest_bp.before_request
+def _guard_contest_entry():
+    """场次的**进入闸**：两道拦阻，未通过就看不到任何内容。
+
+    1. **未开始**（`is_enterable`）→ 进不去；
+    2. **需报名但未报名**（`requires_registration` 且未 `is_enrolled`）→ 也看不到内容。
+
+    进行中/已结束且（无需报名或已报名）才放行。url_value_preprocessor 先于
+    before_request 跑，所以这里一定能拿到 g.contest。
+    例外：报名/取消报名（`_ENROLL_ENDPOINTS`）放行，否则没法报名。
+    """
+    c = getattr(g, 'contest', None)
+    if c is None:
+        return
+    if request.endpoint in _ENROLL_ENDPOINTS:
+        return
+    user = current_user()
+    enrolled = is_enrolled(user, c)          # 无需报名的场次恒为 True
+    if not c.is_enterable:
+        reason = 'not_started'
+    elif c.requires_enrollment_to_view and not enrolled:
+        reason = 'need_enroll'
+    else:
+        return
+    if '/api/' in request.path:
+        msg = (f'本场次（{c.title}）尚未开始，暂不开放' if reason == 'not_started'
+               else f'本场次（{c.title}）需要先报名')
+        return jsonify({'error': msg, 'reason': reason}), 403
+    return render_template('contest_locked.html', contest=c, reason=reason,
+                           enrolled=enrolled), 403
 
 
 # 创建数据库表；表为空且开关打开时导入 demo 数据（方案 B）
@@ -79,6 +116,7 @@ def inject_context():
         # 是否**身在某场次内**（目录页/登录页为 False）——决定顶栏与右栏显不显示场次内容
         'in_contest': getattr(g, 'contest', None) is not None,
         'contests': all_contests(),
+        'fmt_time': fmt_local,      # 朴素 UTC → UTC+8；None → 「—」（赛程用）
         'eval_spec': lambda pid: get_eval_spec(pid, c),
         'eval_specs': specs_for(c),
         'case_elements': case_elements,
@@ -213,15 +251,6 @@ def leaderboard(problem_id):
 # 场次提交
 # ---------------------------------------------------------------------------
 
-def _team_quota_used(team):
-    """本队**本场次**当日（自上次 05:00 结算起）的提交次数。"""
-    return Submission.query.filter(
-        Submission.contest == team.contest,
-        Submission.team_name == team.name,
-        Submission.created_at >= last_reset_utc(),
-    ).count()
-
-
 def _create_submission(user, contest, problem_id, file_storage, source_text=None):
     """校验并落库一次提交。返回 (submission, error_message, reason)。
 
@@ -271,7 +300,7 @@ def _create_submission(user, contest, problem_id, file_storage, source_text=None
         return None, f'提交过于频繁，请等待 {format_wait(wait)}后再试', 'rate_limited'
 
     quota = app.config['DAILY_QUOTA']
-    used = _team_quota_used(team)
+    used = user_quota_used(user, c)          # 配额**按人计**（换队不刷新）
     if used >= quota:
         return None, f'今日提交次数已用尽（{used}/{quota}）', None
 
@@ -286,6 +315,7 @@ def _create_submission(user, contest, problem_id, file_storage, source_text=None
 
     submission = Submission(
         contest=c.slug,
+        user_id=user.id,                     # 配额按人计，须记提交人
         team_name=team.name,
         problem_id=problem_id,
         code_path=save_path,
@@ -318,8 +348,7 @@ def submit_page():
             problems=submittable_problems(c),   # 供页面上的赛题切换器
             suffix=spec.get('file_suffix', '.s'),
             entry_symbol=spec.get('entry_symbol', 'cnn_entry'),
-            quota={'used': _team_quota_used(team) if team else 0,
-                   'limit': app.config['DAILY_QUOTA']},
+            quota=quota_payload(user, c),   # 配额按人计
             wait_seconds=submit_wait_seconds(user, c),
             rate_limited=request.args.get('rate_limited') == '1',
             interval=app.config['SUBMIT_INTERVAL_SECONDS'],
@@ -343,6 +372,31 @@ def submit_page():
     flash(f'已提交 #{submission.id}，正在评测', 'success')
     return redirect(url_for('contest.result_page', slug=c.slug,
                             submission_id=submission.id))
+
+
+def _redirect_back(default_endpoint='contests_page'):
+    """报名类操作后回跳：优先回 `next`（只接受站内相对路径）。"""
+    nxt = request.form.get('next') or request.args.get('next')
+    if nxt and nxt.startswith('/') and not nxt.startswith('//'):
+        return redirect(nxt)
+    return redirect(url_for(default_endpoint))
+
+
+@contest_bp.route('/enroll', methods=['POST'])
+@login_required
+def enroll_page():
+    """个人报名（未开始的场次也能报——见入口闸的例外）。"""
+    _, err = enroll(current_user(), g.contest, request.form.get('code'))
+    flash(err or f'已报名「{g.contest.title}」', 'error' if err else 'success')
+    return _redirect_back()
+
+
+@contest_bp.route('/unenroll', methods=['POST'])
+@login_required
+def unenroll_page():
+    _, err = unenroll(current_user(), g.contest)
+    flash(err or f'已取消报名「{g.contest.title}」', 'error' if err else 'success')
+    return _redirect_back()
 
 
 def _api_submit(contest):
@@ -378,18 +432,15 @@ def team_page():
     user = current_user()
     team = user.team_in(c.slug)
     my_subs = []
-    used = 0
     if team:
-        since = last_reset_utc()
         my_subs = (Submission.query
                    .filter_by(contest=c.slug, team_name=team.name)
                    .order_by(Submission.created_at.desc())
                    .limit(20).all())   # 经 submission_rows() 整理后再传给模板
-        used = _team_quota_used(team)
     return render_template(
         'team.html', user=user, team=team,
         members=[m.user for m in team.members] if team else [],
-        quota={'used': used, 'limit': app.config['DAILY_QUOTA']},
+        quota=quota_payload(user, c),
         submissions=submission_rows(my_subs),
     )
 
@@ -403,7 +454,8 @@ def team_join_page():
         return redirect(url_for('contest.team_page', slug=c.slug))
     return render_template('team_join.html', user=user,
                            restorable=restorable_team(user, c),
-                           closed=not c.is_open)
+                           closed=not c.is_open,
+                           needs_enroll=c.requires_registration and not is_enrolled(user, c))
 
 
 @contest_bp.route('/team/restore', methods=['POST'])
@@ -473,7 +525,7 @@ def api_me():
         'user': user.to_dict(),
         'contest': c.slug,
         'team': team_payload(team, with_members=True),
-        'quota': quota_payload(team),
+        'quota': quota_payload(user, c),
     })
 
 
@@ -549,9 +601,18 @@ app.register_blueprint(contest_bp)
 @app.route('/')
 @app.route('/contests')
 def contests_page():
-    """**最外层**：场次目录。`/` 就是这里——先选赛事，再进门。"""
+    """**最外层**：场次目录。`/` 就是这里——先选赛事，再进门。
+
+    同时把「我报了哪些名」带出去，供每场显示 报名 / 已报名 / 无需报名。
+    """
+    user = current_user()
+    enrolled_slugs = set()
+    if user is not None:
+        enrolled_slugs = {e.contest for e in
+                          Enrollment.query.filter_by(user_id=user.id).all()}
     return render_template('contests.html', contests=all_contests(),
-                           default_contest=default_contest())
+                           default_contest=default_contest(),
+                           enrolled_slugs=enrolled_slugs)
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +728,7 @@ def legacy_api_me():
         'user': user.to_dict(),
         'contest': c.slug,
         'team': team_payload(team, with_members=True),
-        'quota': quota_payload(team),
+        'quota': quota_payload(user, c),
     })
 
 
