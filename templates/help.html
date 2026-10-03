@@ -11,7 +11,7 @@
   <div>
     <strong>提交已开放。</strong>
     登录并加入队伍后，到
-    <a href="{{ url_for('submit_page') }}">提交页</a>
+    <a href="{{ url_for('contest.submit_page', slug=contest.slug) }}">提交页</a>
     上传或直接粘贴 RISC-V 汇编即可评测。
   </div>
 </div>
@@ -22,7 +22,7 @@
     <details class="faq">
       <summary>谁可以参赛？怎么组队？</summary>
       <div class="faq-body">
-        <p>面向华东师范大学全日制在校本科生（含大四），低年级研究生可自愿参与。每队 1~3 人，每人只能加入一支队伍，鼓励跨年级、跨专业组队。</p>
+        <p>面向华东师范大学全日制在校本科生（含大四），低年级研究生可自愿参与。每队 1~3 人，<strong>每场次</strong>每人限加入一支队伍，鼓励跨年级、跨专业组队。</p>
       </div>
     </details>
     <details class="faq">
@@ -57,7 +57,9 @@
     <details class="faq">
       <summary>每天能提交多少次？什么时候重置？</summary>
       <div class="faq-body">
-        <p>每队每天最多提交 99 次，配额每日 05:00（UTC+8）重置。计分取<strong>历史最优</strong>（跨日累计），多提交不会覆盖更好的成绩，配额重置也不会清空已有成绩。</p>
+        <p><strong>每人</strong>每天最多提交 99 次（配额按<strong>人</strong>计，不随换队刷新），每日 05:00（UTC+8）重置。
+          计分取<strong>历史最优</strong>（跨日累计），多提交不会覆盖更好的成绩，配额重置也不会清空已有成绩。</p>
+        <p>每人每天只能<strong>退出队伍一次</strong>（次日 05:00 后可再退）——避免靠反复退队腾挪。</p>
       </div>
     </details>
     <details class="faq">
@@ -107,7 +109,7 @@
           <li><span class="mono">matmul</span>：4×4, 8×8, …, 64×64</li>
         </ul>
         <p>由小到大覆盖「基本正确性 → 循环开销 → 访存瓶颈」。完整表格见
-          <a href="{{ url_for('problems_page') }}">赛题页</a>。</p>
+          <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题页</a>。</p>
       </div>
     </details>
     <details class="faq">

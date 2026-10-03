@@ -17,13 +17,28 @@ python app.py        # http://0.0.0.0:5000
 - 后台 worker 线程异步评测：跑选手脚本产出 RISC-V 二进制 → Spike 仿真计时 → 按 `baseline/选手` 计分
 - 排行榜（按 problem 过滤，取 top 50）+ 结果详情页（2s 轮询）
 
+## 多场竞赛
+
+平台支持**多场竞赛**：赛题 + 提交 + 榜单 + 队伍按场次隔离，用户账号全局。
+场次在 `contests.py` 里**用代码注册**，URL 形如 `/c/<slug>/...`（旧 URL 会 302 到默认场次）。
+详见 [`docs/10-多场次设计.md`](docs/10-多场次设计.md)。
+
+> **升级到多场次需要迁移数据库**——`db.create_all()` 不会 ALTER 已有表，而本次要改唯一约束，
+> SQLite 只能重建表。**首次运行前**先迁移（会自动备份）：
+>
+> ```bash
+> .venv/bin/python tools/migrate_multicontest.py            # 先看计划（dry-run）
+> .venv/bin/python tools/migrate_multicontest.py --apply    # 备份并写入
+> ```
+
 ## 仓库结构
 
 | 文件 | 职责 |
 |------|------|
 | `app.py` | Flask 入口：`/api/submit`、`/api/result/<id>`、`/api/leaderboard/<problem>` |
 | `config.py` | SQLite 路径、上传/测试数据目录、评测超时 120s |
-| `models.py` | `Submission` 表（team/problem/code_path/status/score/details） |
+| `contests.py` | **场次注册表**（多场竞赛）：场次定义、赛题挑选与规格覆盖、生命周期 |
+| `models.py` | `Submission` 表（contest/team/problem/code_path/status/score/details） |
 | `tasks.py` | 内存队列 + 后台 worker 线程 |
 | `evaluator.py` | 编译选手代码、Spike 运行、解析 cycles/instructions、计分 |
 | `templates/` | 提交页 + 结果轮询页（Bootstrap 5 CDN） |

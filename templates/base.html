@@ -29,7 +29,7 @@
     {# ---- 品牌条 ---- #}
     <div class="brandbar">
       <div class="container d-flex align-items-center gap-3">
-        <a class="wordmark" href="{{ url_for('index') }}" aria-label="RISC-V AI 编译器挑战赛，返回首页">
+        <a class="wordmark" href="{{ url_for('contests_page') }}" aria-label="RISC-V AI 编译器挑战赛，返回赛事列表">
           <svg class="mark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
             <path d="M2.5 5 11 12 2.5 19Z"/>
             <path d="M21.5 5 13 12l8.5 7Z"/>
@@ -38,9 +38,28 @@
           <span class="rest">AI 编译器挑战赛</span>
         </a>
 
-        <span class="stage-badge d-none d-sm-inline-flex">
-          <span class="dot" aria-hidden="true"></span>Stage 1 · 线上赛
-        </span>
+        {# 场次切换器：显示当前场次副标题 + 状态，可切到其它场次 #}
+        <div class="dropdown d-none d-sm-inline-flex">
+          <button class="stage-badge dropdown-toggle" type="button" id="contestMenu"
+                  data-bs-toggle="dropdown" aria-expanded="false"
+                  aria-label="切换竞赛场次：当前 {{ contest.title }}（{{ contest.status_display }}）">
+            <span class="dot{% if not contest.is_running %} dot-muted{% endif %}" aria-hidden="true"></span>
+            {% if request.endpoint == 'contests_page' %}选择场次{% else %}{{ contest.status_display }}{% endif %}
+          </button>
+          <ul class="dropdown-menu" aria-labelledby="contestMenu">
+            {% for c in contests %}
+            <li>
+              <a class="dropdown-item{% if c.slug == contest.slug %} active{% endif %}"
+                 href="{{ url_for('contest.index', slug=c.slug) }}">
+                {{ c.short_title }}
+                <span class="text-body-secondary small">· {{ c.status_display }}</span>
+              </a>
+            </li>
+            {% endfor %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('contests_page') }}">全部场次 →</a></li>
+          </ul>
+        </div>
 
         <div class="ms-auto d-none d-md-flex align-items-center gap-3">
           <span class="refresh-line">
@@ -62,7 +81,7 @@
               {{ current_user.name }}
             </button>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="acctMenu">
-              <li><a class="dropdown-item" href="{{ url_for('auth.team_page') }}">我的队伍</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('contest.team_page', slug=contest.slug) }}">我的队伍</a></li>
               <li><hr class="dropdown-divider"></li>
               <li>
                 <form method="post" action="{{ url_for('auth.logout_page') }}">
@@ -98,29 +117,36 @@
         <div class="collapse navbar-collapse" id="mainNav">
           <ul class="navbar-nav">
             <li class="nav-item">
-              <a class="nav-link{% if ep == 'index' %} active{% endif %}" href="{{ url_for('index') }}"
-                 {% if ep == 'index' %}aria-current="page"{% endif %}>首页</a>
+              <a class="nav-link{% if ep == 'contests_page' %} active{% endif %}" href="{{ url_for('contests_page') }}"
+                 {% if ep == 'contests_page' %}aria-current="page"{% endif %}>赛事</a>
+            </li>
+            {# 以下都是**场次内**的导航：没选场次（目录页/登录页）就不显示 #}
+            {% if in_contest %}
+            <li class="nav-item">
+              <a class="nav-link{% if ep == 'contest.index' %} active{% endif %}" href="{{ url_for('contest.index', slug=contest.slug) }}"
+                 {% if ep == 'contest.index' %}aria-current="page"{% endif %}>本场首页</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if ep in ('problems_page', 'problem_page') %} active{% endif %}" href="{{ url_for('problems_page') }}"
-                 {% if ep in ('problems_page', 'problem_page') %}aria-current="page"{% endif %}>赛题</a>
+              <a class="nav-link{% if ep in ('contest.problems_page', 'contest.problem_page') %} active{% endif %}" href="{{ url_for('contest.problems_page', slug=contest.slug) }}"
+                 {% if ep in ('contest.problems_page', 'contest.problem_page') %}aria-current="page"{% endif %}>赛题</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if ep == 'standings_page' %} active{% endif %}" href="{{ url_for('standings_page') }}"
-                 {% if ep == 'standings_page' %}aria-current="page"{% endif %}>排行榜</a>
+              <a class="nav-link{% if ep == 'contest.standings_page' %} active{% endif %}" href="{{ url_for('contest.standings_page', slug=contest.slug) }}"
+                 {% if ep == 'contest.standings_page' %}aria-current="page"{% endif %}>排行榜</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if ep == 'submit_page' %} active{% endif %}" href="{{ url_for('submit_page') }}"
-                 {% if ep == 'submit_page' %}aria-current="page"{% endif %}>提交</a>
+              <a class="nav-link{% if ep == 'contest.submit_page' %} active{% endif %}" href="{{ url_for('contest.submit_page', slug=contest.slug) }}"
+                 {% if ep == 'contest.submit_page' %}aria-current="page"{% endif %}>提交</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if ep in ('auth.team_page', 'auth.team_join_page') %} active{% endif %}" href="{{ url_for('auth.team_page') }}"
-                 {% if ep in ('auth.team_page', 'auth.team_join_page') %}aria-current="page"{% endif %}>我的队伍</a>
+              <a class="nav-link{% if ep in ('contest.team_page', 'contest.team_join_page') %} active{% endif %}" href="{{ url_for('contest.team_page', slug=contest.slug) }}"
+                 {% if ep in ('contest.team_page', 'contest.team_join_page') %}aria-current="page"{% endif %}>我的队伍</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link{% if ep == 'help_page' %} active{% endif %}" href="{{ url_for('help_page') }}"
-                 {% if ep == 'help_page' %}aria-current="page"{% endif %}>帮助</a>
+              <a class="nav-link{% if ep == 'contest.help_page' %} active{% endif %}" href="{{ url_for('contest.help_page', slug=contest.slug) }}"
+                 {% if ep == 'contest.help_page' %}aria-current="page"{% endif %}>帮助</a>
             </li>
+            {% endif %}
             {# 移动端：汉堡菜单里补账号入口（桌面在品牌条） #}
             <li class="nav-item d-md-none">
               {% if current_user %}
@@ -159,18 +185,20 @@
         {% block content %}{% endblock %}
       </main>
       <aside class="col-12 {% block rail_cols %}col-lg-4{% endblock %} rail" aria-label="赛事信息">
-        {% block rail %}{% include '_rail.html' %}{% endblock %}
+        {# 场次内右栏是场次信息；目录/登录等页面用通用右栏，免得把默认场次当成「本场次」 #}
+        {% block rail %}{% if in_contest %}{% include '_rail.html' %}{% else %}{% include '_rail_generic.html' %}{% endif %}{% endblock %}
       </aside>
     </div>
   </div>
 
   <footer class="site-footer">
     <div class="container d-flex flex-wrap gap-3 justify-content-between">
-      <span>华东师范大学 · RISC-V AI 编译器大学生挑战赛 · Stage 1 线上评测平台</span>
+      <span>华东师范大学 · {{ contest.title }} · 评测平台</span>
       <span class="d-flex gap-3">
-        <a href="{{ url_for('problems_page') }}">赛题</a>
-        <a href="{{ url_for('standings_page') }}">排行榜</a>
-        <a href="{{ url_for('help_page') }}">帮助</a>
+        <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题</a>
+        <a href="{{ url_for('contest.standings_page', slug=contest.slug) }}">排行榜</a>
+        <a href="{{ url_for('contest.help_page', slug=contest.slug) }}">帮助</a>
+        <a href="{{ url_for('contests_page') }}">赛事</a>
       </span>
     </div>
   </footer>

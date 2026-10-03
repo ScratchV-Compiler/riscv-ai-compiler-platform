@@ -14,17 +14,20 @@ import os
 from datetime import timedelta
 
 from config import DEMO_SUBMISSIONS_CSV
+from contests import DEFAULT_SLUG
 from models import db, Submission
 from standings import last_reset_utc
 
 
-def seed_demo_submissions(force=False):
-    """表为空时从 CSV 导入演示提交；返回导入条数。
+def seed_demo_submissions(force=False, contest=DEFAULT_SLUG):
+    """**该场次**没有任何提交时，从 CSV 导入演示数据；返回导入条数。
 
     force=True 时忽略「表非空」判断，用于演示数据换代（题目集合变更后重建榜单）。
     调用方需保证不会重复导入。
+
+    演示数据只登记到**默认场次**（CSV 无 contest 列时）；其它场次按空榜启动。
     """
-    if not force and Submission.query.count() > 0:
+    if not force and Submission.query.filter_by(contest=contest).count() > 0:
         return 0
     if not os.path.exists(DEMO_SUBMISSIONS_CSV):
         return 0
@@ -36,6 +39,7 @@ def seed_demo_submissions(force=False):
             offset = int(row.get('offset_minutes') or 0)
             ts = since + timedelta(minutes=offset)
             db.session.add(Submission(
+                contest=(row.get('contest') or contest).strip(),
                 team_name=(row.get('team_name') or '').strip(),
                 problem_id=(row.get('problem_id') or '').strip(),
                 code_path='',

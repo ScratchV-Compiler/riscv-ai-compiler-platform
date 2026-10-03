@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}排行榜 · RISC-V AI 编译器挑战赛{% endblock %}
+{% block title %}排行榜 · {{ contest.title }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
@@ -12,7 +12,7 @@
 
 <section class="panel" aria-labelledby="lbHeading">
   <div class="panel-head">
-    <h2 id="lbHeading">Stage 1 榜单</h2>
+    <h2 id="lbHeading">榜单</h2>
     <span class="text-body-secondary small">每 15 秒自动刷新</span>
   </div>
 
@@ -20,26 +20,28 @@
     <span class="filter-group">
       <span class="filter-label">赛题</span>
       <span class="seg" role="group" aria-label="按赛题筛选">
-        <a href="{{ url_for('standings_page', problem='all', stage=stage) }}"
+        <a href="{{ url_for('contest.standings_page', slug=contest.slug, problem='all', stage=stage) }}"
            {% if problem == 'all' %}aria-current="true"{% endif %}>全部</a>
         {% for p in problems %}
-        <a href="{{ url_for('standings_page', problem=p.id, stage=stage) }}"
+        <a href="{{ url_for('contest.standings_page', slug=contest.slug, problem=p.id, stage=stage) }}"
            {% if problem == p.id %}aria-current="true"{% endif %}>{{ p.title }}</a>
         {% endfor %}
       </span>
     </span>
     <span class="filter-group">
-      <span class="filter-label">阶段</span>
-      <span class="seg" role="group" aria-label="按阶段筛选">
-        <a href="{{ url_for('standings_page', problem=problem, stage=1) }}"
-           {% if stage == 1 %}aria-current="true"{% endif %}>Stage 1</a>
-        <a href="#" aria-disabled="true" onclick="return false" title="Stage 2 现场赛，本版暂不开放">Stage 2</a>
+      <span class="filter-label">场次</span>
+      <span class="seg" role="group" aria-label="切换场次">
+        {% for c in contests %}
+        <a href="{{ url_for('contest.standings_page', slug=c.slug, problem=problem) }}"
+           {% if c.slug == contest.slug %}aria-current="true"{% endif %}
+           title="{{ c.title }}（{{ c.status_display }}）">{{ c.short_title }}</a>
+        {% endfor %}
       </span>
     </span>
   </div>
 
   <div id="standings"
-       hx-get="{{ url_for('frag_standings', problem=problem, stage=stage) }}"
+       hx-get="{{ url_for('contest.frag_standings', slug=contest.slug, problem=problem, stage=stage) }}"
        hx-trigger="every 15s"
        hx-swap="innerHTML">
     {% include 'fragments/standings.html' %}

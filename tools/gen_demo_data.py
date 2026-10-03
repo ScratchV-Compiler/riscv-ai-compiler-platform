@@ -14,6 +14,7 @@
 
     .venv/bin/python tools/gen_demo_data.py
 """
+import argparse
 import csv
 import json
 import os
@@ -23,13 +24,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import contests                      # noqa: E402
 import riscv_problems as RP          # noqa: E402
 
-BASELINE = os.path.join(ROOT, 'data', 'baseline.json')
 # 指令数/cost 的比例直接从 baseline.json 的 by_size_instructions 推——
 # 早先依赖 /tmp 里一个陈旧文件，既是隐患、换编译级别后还会算错
-OUT = os.path.join(ROOT, 'data', 'demo_submissions.csv')
-
 MISS_PENALTY = 15
 
 # 队伍能力：(队名, 小N效率, 大N效率, 说明)
@@ -46,13 +45,13 @@ TEAMS = [
 ]
 
 
-def load_ratio(pid):
+def load_ratio(baseline_path, pid):
     """返回 (各规模 baseline 代价, 各规模的 指令数/代价 比例)。
 
     比例用来把 cost 拆回「指令数 + 15×未命中」，使演示数据自洽
     （演示数据里 cost 必须恰好等于 instructions + 15×d_miss）。
     """
-    with open(BASELINE, encoding='utf-8') as f:
+    with open(baseline_path, encoding='utf-8') as f:
         data = json.load(f)
     entry = data[pid]
     base = {int(n): c for n, c in entry['by_size'].items()}
@@ -93,10 +92,29 @@ def make_details(pid, spec, base, ratio, eff_small, eff_large, rng):
 
 
 def main():
+    ap = argparse.ArgumentParser(description='生成演示榜单 CSV')
+    ap.add_argument('--contest', default=None,
+                    help='场次 slug（默认场次可省略）——按该场次试卷与 baseline 生成')
+    args = ap.parse_args()
+
+    contest = contests.get_contest(args.contest) if args.contest else contests.default_contest()
+    if contest is None:
+        raise SystemExit(f'未知场次：{args.contest}')
+
+    baseline_path = os.path.join(ROOT, contest.baseline_file or RP.DATA_DIR_BASELINE)
+    if contest.default or not contest.baseline_file:
+        out_path = os.path.join(ROOT, 'data', 'demo_submissions.csv')
+    else:
+        out_path = os.path.join(ROOT, 'data', 'contests', contest.slug,
+                                'demo_submissions.csv')
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
     rng = random.Random(20261001)       # 固定种子，可复现
     rows = []
-    for pid, spec in RP.EVAL_SPECS.items():
-        base, ratio = load_ratio(pid)
+    for pid, spec in contests.specs_for(contest).items():
+        if spec is None:
+            continue
+        base, ratio = load_ratio(baseline_path, pid)
         for team, e_small, e_large in TEAMS:
             # 每队每题 1~2 次提交：先来一次略差的，再来一次最终版
             for k in range(rng.randint(1, 2)):
@@ -107,6 +125,7 @@ def main():
                 if not last:
                     d['cases'] = [c for c in d['cases']]   # 早的一次也是全套数据点
                 rows.append({
+                    'contest': contest.slug,
                     'team_name': team, 'problem_id': pid, 'status': 'success',
                     'score': 0.0,                    # 由榜单现算
                     'details': json.dumps(d, ensure_ascii=False, separators=(',', ':')),
@@ -118,13 +137,13 @@ def main():
         r['offset_minutes'] = t
     rows.sort(key=lambda r: r['offset_minutes'])
 
-    with open(OUT, 'w', newline='', encoding='utf-8') as f:
-        w = csv.DictWriter(f, fieldnames=['team_name', 'problem_id', 'status',
+    with open(out_path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=['contest', 'team_name', 'problem_id', 'status',
                                           'score', 'offset_minutes', 'details'])
         w.writeheader()
         w.writerows(rows)
-    print(f'已写入 {OUT}：{len(rows)} 行，{len(TEAMS)} 队，含逐数据点 details')
-    print(f'  文件大小 {os.path.getsize(OUT)/1024:.0f} KB')
+    print(f'已写入 {out_path}：{len(rows)} 行，{len(TEAMS)} 队，场次 {contest.slug}，含逐数据点 details')
+    print(f'  文件大小 {os.path.getsize(out_path)/1024:.0f} KB')
 
 
 if __name__ == '__main__':

@@ -69,12 +69,13 @@ def _evaluate(submission_id):
     # 更新状态为 running
     submission.status = 'running'
     db.session.commit()
-    # 执行评测
+    # 执行评测。contest 按提交所属场次取（旧库尚未加列时为 None → 默认场次）。
     score, details = run_evaluation(
         submission.id,
         submission.team_name,
         submission.problem_id,
-        submission.code_path
+        submission.code_path,
+        contest=getattr(submission, 'contest', None),
     )
     # 更新结果
     submission.status = 'success' if details.get('error') is None else 'failed'

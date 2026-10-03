@@ -33,7 +33,7 @@ class Config:
 
     # ---- P2 身份与组队 ----
     PERMANENT_SESSION_LIFETIME = timedelta(days=14)  # 登录态有效期
-    DAILY_QUOTA = 99                                 # 每队每日提交上限
+    DAILY_QUOTA = 99                                 # 每人每场每日提交上限（按人计）
     LOGIN_MAX_FAILURES = 5                           # 登录失败限频阈值
     LOGIN_LOCK_SECONDS = 15 * 60                     # 锁定时长
 

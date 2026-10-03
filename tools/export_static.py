@@ -27,18 +27,56 @@ sys.path.insert(0, BASE_DIR)
 
 from app import app  # noqa: E402  （导入即建库 + 导入 demo 数据，保证静态站有榜单可展示）
 from models import Submission  # noqa: E402
-from problems import PROBLEMS, problem_ids  # noqa: E402
+import contests  # noqa: E402
 
 OUT_DIR = os.path.join(BASE_DIR, 'dist')
-STAGES = [1]  # Stage 2 在页面里是禁用态，静态站同样只导 Stage 1
 
-# 需要登录 / 需要后端的页面 → 统一指到说明页
+# 需要登录 / 需要后端的页面 → 统一指到说明页（会被加上各场次前缀）
+NEEDS_BACKEND_SUFFIXES = {
+    '/team': 'demo-notice.html',        # 需登录，匿名访问会被重定向 ⇒ 直接指说明页
+    '/team/join': 'demo-notice.html',
+    '/submit': 'demo-notice.html',      # 需登录 + 后端
+}
 NEEDS_BACKEND = {
     '/login': 'login.html',      # 页面本身可静态展示（表单会降级跳说明页）
     '/register': 'register.html',
-    '/team': 'demo-notice.html',  # 需登录，匿名访问会被重定向 ⇒ 直接指说明页
-    '/team/join': 'demo-notice.html',
 }
+
+
+def _cname(c, base):
+    """默认场次用不带后缀的文件名，其它场次加 -<slug>，便于根 index.html 指向默认场次。"""
+    return f'{base}.html' if c.default else f'{base}-{c.slug}.html'
+
+
+def index_name(c):
+    """场次首页——根 `index.html` 留给「赛事目录」，所以场次一律带 slug 后缀。"""
+    return f'index-{c.slug}.html'
+
+
+def problems_name(c):
+    return _cname(c, 'problems')
+
+
+def problem_name(c, pid):
+    return f'problem-{c.slug}-{pid}.html'
+
+
+def help_name(c):
+    return _cname(c, 'help')
+
+
+def standings_name(c, problem):
+    base = 'standings' if c.default else f'standings-{c.slug}'
+    return f'{base}.html' if problem == 'all' else f'{base}-{problem}.html'
+
+
+def frag_name(c, problem):
+    base = 'frag-standings' if c.default else f'frag-standings-{c.slug}'
+    return f'{base}.html' if problem == 'all' else f'{base}-{problem}.html'
+
+
+def result_name(c, rid):
+    return f'result-{c.slug}-{rid}.html'
 
 DEMO_BANNER = (
     '<div style="background:#fff4d6;border-bottom:1px solid #e6cf95;color:#5b4708;'
@@ -69,35 +107,50 @@ DEMO_NOTICE = """<!DOCTYPE html>
 """ % DEMO_BANNER
 
 
-def standings_url(problem, stage):
-    """排行榜页的扁平文件名。"""
-    return 'standings.html' if problem == 'all' and stage == 1 else 'standings-%s-%s.html' % (problem, stage)
+def build_url_map(results_by_contest):
+    """站点内部绝对路径 → 静态文件名。未登记的交给 resolve() 兜底。
 
-
-def frag_url(problem, stage):
-    """排行榜 htmx 片段（15s 轮询那一块）的扁平文件名。"""
-    return 'frag-standings-%s-%s.html' % (problem, stage)
-
-
-def build_url_map(result_ids):
-    """站点内部绝对路径 → 静态文件名。未登记的交给 resolve() 兜底。"""
+    每场次一套 `/c/<slug>/...` 路径；旧的裸路径（`/standings` 等）映射到**默认场次**，
+    因为它们会 302 过去。
+    """
     m = {
-        '/': 'index.html',
-        '/problems': 'problems.html',
-        '/standings': standings_url('all', 1),
-        '/help': 'help.html',
-        '/frag/standings': frag_url('all', 1),
-        '/api/problems': 'api-problems.json',
+        '/': 'index.html',          # 最外层 = 场次目录
+        '/contests': 'index.html',  # 同页的另一个入口
         '/demo-notice.html': 'demo-notice.html',
     }
-    for p in problem_ids():
-        m['/problems/%s' % p] = 'problem-%s.html' % p
-    for p in ['all'] + problem_ids():
-        for s in STAGES:
-            m['/standings?problem=%s&stage=%s' % (p, s)] = standings_url(p, s)
-            m['/frag/standings?problem=%s&stage=%s' % (p, s)] = frag_url(p, s)
-    for rid in result_ids:
-        m['/result/%d' % rid] = 'result-%d.html' % rid
+    for c in contests.all_contests():
+        pre = '/c/%s' % c.slug
+        pids = contests.contest_problem_ids(c)
+        m[pre + '/'] = index_name(c)
+        m[pre + '/problems'] = problems_name(c)
+        m[pre + '/help'] = help_name(c)
+        for pid in pids:
+            m['%s/problems/%s' % (pre, pid)] = problem_name(c, pid)
+        for p in ['all'] + pids:
+            m['%s/standings?problem=%s' % (pre, p)] = standings_name(c, p)
+            m['%s/frag/standings?problem=%s' % (pre, p)] = frag_name(c, p)
+        m[pre + '/standings'] = standings_name(c, 'all')
+        m[pre + '/frag/standings'] = frag_name(c, 'all')
+        for rid in results_by_contest.get(c.slug, []):
+            m['%s/result/%d' % (pre, rid)] = result_name(c, rid)
+        for suf, f in NEEDS_BACKEND_SUFFIXES.items():
+            m[pre + suf] = f
+
+    d = contests.default_contest()
+    dpids = contests.contest_problem_ids(d)
+    # 旧裸路径 → 默认场次产物
+    m['/problems'] = problems_name(d)
+    m['/standings'] = standings_name(d, 'all')
+    m['/help'] = help_name(d)
+    m['/frag/standings'] = frag_name(d, 'all')
+    m['/api/problems'] = 'api-problems.json'
+    for pid in dpids:
+        m['/problems/%s' % pid] = problem_name(d, pid)
+    for p in ['all'] + dpids:
+        m['/standings?problem=%s' % p] = standings_name(d, p)
+        m['/frag/standings?problem=%s' % p] = frag_name(d, p)
+    for rid in results_by_contest.get(d.slug, []):
+        m['/result/%d' % rid] = result_name(d, rid)
     for u, f in NEEDS_BACKEND.items():
         m[u] = f
     return m
@@ -113,8 +166,8 @@ def resolve(url, url_map):
         return url[1:]                      # /static/x.css → static/x.css
     if url in url_map:
         return url_map[url]
-    # /api/auth/login 之类：静态站没有后端，指到说明页
-    if url.startswith('/api/'):
+    # /api/... 或场次下的 API：静态站没有后端，指到说明页
+    if '/api/' in url or url.startswith('/api/'):
         return 'demo-notice.html'
     return url_map.get('/demo-notice.html')
 
@@ -154,23 +207,29 @@ def main():
         shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
 
     with app.app_context():
-        result_ids = [r.id for r in Submission.query.order_by(Submission.id).all()]
-        total_subs = len(result_ids)
+        results_by_contest = {}
+        for r in Submission.query.order_by(Submission.id).all():
+            results_by_contest.setdefault(r.contest, []).append(r.id)
+        total_subs = sum(len(v) for v in results_by_contest.values())
 
-    url_map = build_url_map(result_ids)
+    url_map = build_url_map(results_by_contest)
     client = app.test_client()
 
-    pages = [('/', url_map['/']), ('/problems', 'problems.html'), ('/help', 'help.html'),
+    pages = [('/', 'index.html'),
              ('/login', 'login.html'), ('/register', 'register.html')]
-    for p in problem_ids():
-        pages.append(('/problems/%s' % p, 'problem-%s.html' % p))
-    pages.append(('/standings', standings_url('all', 1)))
-    for p in ['all'] + problem_ids():
-        for s in STAGES:
-            pages.append(('/standings?problem=%s&stage=%s' % (p, s), standings_url(p, s)))
-            pages.append(('/frag/standings?problem=%s&stage=%s' % (p, s), frag_url(p, s)))
-    for rid in result_ids:
-        pages.append(('/result/%d' % rid, 'result-%d.html' % rid))
+    for c in contests.all_contests():
+        pre = '/c/%s' % c.slug
+        pids = contests.contest_problem_ids(c)
+        pages.append((pre + '/', index_name(c)))
+        pages.append((pre + '/problems', problems_name(c)))
+        pages.append((pre + '/help', help_name(c)))
+        for pid in pids:
+            pages.append(('%s/problems/%s' % (pre, pid), problem_name(c, pid)))
+        for p in ['all'] + pids:
+            pages.append(('%s/standings?problem=%s' % (pre, p), standings_name(c, p)))
+            pages.append(('%s/frag/standings?problem=%s' % (pre, p), frag_name(c, p)))
+        for rid in results_by_contest.get(c.slug, []):
+            pages.append(('%s/result/%d' % (pre, rid), result_name(c, rid)))
 
     written = 0
     for path, fname in pages:
@@ -187,13 +246,14 @@ def main():
             f.write(html)
         written += 1
 
-    # 说明页 + /api/problems 静态 JSON（前端下拉框可能用到）
+    # 说明页 + /api/problems 静态 JSON（前端下拉框可能用到），每场次一份
     with open(os.path.join(OUT_DIR, 'demo-notice.html'), 'w', encoding='utf-8') as f:
         f.write(DEMO_NOTICE)
-    with app.app_context():
-        with app.test_client() as c:
-            r = c.get('/api/problems')
-            with open(os.path.join(OUT_DIR, 'api-problems.json'), 'w', encoding='utf-8') as f:
+    with app.test_client() as c:
+        for con in contests.all_contests():
+            r = c.get('/c/%s/api/problems' % con.slug)
+            fname = 'api-problems.json' if con.default else 'api-problems-%s.json' % con.slug
+            with open(os.path.join(OUT_DIR, fname), 'w', encoding='utf-8') as f:
                 f.write(r.get_data(as_text=True))
 
     # 静态资源整目录拷贝

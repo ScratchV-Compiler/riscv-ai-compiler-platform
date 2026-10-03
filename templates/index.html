@@ -1,17 +1,17 @@
 {% extends 'base.html' %}
-{% block title %}RISC-V AI 编译器挑战赛 · 评测平台{% endblock %}
+{% block title %}{{ contest.title }} · 评测平台{% endblock %}
 
 {% block content %}
 <section class="hero">
-  <span class="chip"><span class="dot" aria-hidden="true"></span>Stage 1 线上赛 · 进行中</span>
-  <h1>RISC-V AI 编译器挑战赛</h1>
+  <span class="chip"><span class="dot" aria-hidden="true"></span>{{ contest.status_display }}</span>
+  <h1>{{ contest.title }}</h1>
   <p class="lede">
     提交 RISC-V 汇编，平台在 qemu 上真实执行，按正确性与代价（指令数 + 访存）计分。
     汇编可由编译器生成——让编译器产出更省的代码，正是本题的着力点。
   </p>
   <div class="hero-cta">
-    <a class="btn btn-brand" href="{{ url_for('standings_page') }}">查看排行榜</a>
-    <a class="btn btn-quiet" href="{{ url_for('problems_page') }}">阅读赛题</a>
+    <a class="btn btn-brand" href="{{ url_for('contest.standings_page', slug=contest.slug) }}">查看排行榜</a>
+    <a class="btn btn-quiet" href="{{ url_for('contest.problems_page', slug=contest.slug) }}">阅读赛题</a>
     <a class="btn btn-brand-outline" href="https://github.com/ScratchV-Compiler/ScratchV"
        target="_blank" rel="noopener">用 ScratchV 编译器 ↗</a>
   </div>
@@ -48,12 +48,12 @@ cd ScratchV &amp;&amp; pip install -e .    # 装完即可编译赛题模型到 R
 <section class="panel mt-4" aria-labelledby="probHeading">
   <div class="panel-head">
     <h2 id="probHeading">赛题</h2>
-    <a class="small" href="{{ url_for('problems_page') }}">查看题面与评测约定</a>
+    <a class="small" href="{{ url_for('contest.problems_page', slug=contest.slug) }}">查看题面与评测约定</a>
   </div>
   <ul class="prob-list">
     {% for p in problems %}
     <li>
-      <a class="prob-row" href="{{ url_for('problem_page', problem_id=p.id) }}">
+      <a class="prob-row" href="{{ url_for('contest.problem_page', slug=contest.slug, problem_id=p.id) }}">
         <span class="prob-no mono">{{ '%02d'|format(p.no) }}</span>
         <span class="prob-main">
           <span class="prob-title d-block">{{ p.title }}</span>
@@ -76,10 +76,10 @@ cd ScratchV &amp;&amp; pip install -e .    # 装完即可编译赛题模型到 R
 <section class="panel" aria-labelledby="lbHeading">
   <div class="panel-head">
     <h2 id="lbHeading">排行榜速览</h2>
-    <a class="small" href="{{ url_for('standings_page') }}">完整榜单</a>
+    <a class="small" href="{{ url_for('contest.standings_page', slug=contest.slug) }}">完整榜单</a>
   </div>
   <div id="standings"
-       hx-get="{{ url_for('frag_standings', problem='all', stage=1, limit=5) }}"
+       hx-get="{{ url_for('contest.frag_standings', slug=contest.slug, problem='all', stage=1, limit=5) }}"
        hx-trigger="every 15s"
        hx-swap="innerHTML">
     {% set standings = standings_preview %}

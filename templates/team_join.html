@@ -1,11 +1,46 @@
 {% extends 'base.html' %}
-{% block title %}建队 / 入队 · RISC-V AI 编译器挑战赛{% endblock %}
+{% block title %}建队 / 入队 · {{ contest.title }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <h1>建队 / 入队</h1>
   <p class="lede">{{ user.name }}，你还没有加入队伍。创建一个新队伍，或用队长给你的邀请码加入。</p>
 </div>
+
+{% if needs_enroll %}
+{# 需报名的场次：未报名先报名，再组队 #}
+<section class="panel">
+  <div class="panel-head"><h2>本场次需先报名</h2></div>
+  <div class="panel-body">
+    <div class="notice notice-warn mb-3" role="status">
+      <div><strong>「{{ contest.title }}」需要报名才能参赛。</strong>报名后即可组队。</div>
+    </div>
+    <form method="post" action="{{ url_for('contest.enroll_page', slug=contest.slug) }}"
+          class="d-flex gap-2 align-items-center" style="max-width: 22rem;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('contest.team_join_page', slug=contest.slug) }}">
+      <input type="text" name="code" class="form-control" placeholder="报名邀请码"
+             required autocomplete="off">
+      <button class="btn btn-brand" type="submit">报名</button>
+    </form>
+  </div>
+</section>
+{% elif closed %}
+{# 未开始 / 已结束的场次：不许参加，只给说明，不给建队/入队表单 #}
+<section class="panel">
+  <div class="panel-head"><h2>本场次{{ contest.status_display }}</h2></div>
+  <div class="panel-body">
+    <div class="notice notice-info mb-0" role="status">
+      <div>
+        <strong>「{{ contest.title }}」当前{{ contest.status_display }}，暂不能参加（组队/入队）。</strong>
+        场次开始后才能组队报名。现在可先浏览
+        <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题</a>与
+        <a href="{{ url_for('contest.standings_page', slug=contest.slug) }}">榜单</a>。
+      </div>
+    </div>
+  </div>
+</section>
+{% else %}
 
 {% if restorable %}
 {# 他曾是某解散队的队长：队伍行还在（没删），但邀请码作废、队名仍占着。
@@ -21,7 +56,7 @@
       恢复后队名、队伍历史都会保留，<strong>邀请码会换成新的</strong>
       （旧码已作废，且可能已给过前队员）。
     </p>
-    <form method="post" action="{{ url_for('auth.team_restore_page') }}">
+    <form method="post" action="{{ url_for('contest.team_restore_page', slug=contest.slug) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-brand" type="submit">恢复「{{ restorable.name }}」</button>
     </form>
@@ -35,7 +70,7 @@
       <div class="panel-head"><h2>创建队伍</h2></div>
       <div class="panel-body">
         <p class="text-body-secondary">创建后你将自动成为队长，并获得一个邀请码，邀请 1~2 名队友加入。</p>
-        <form method="post" action="{{ url_for('auth.team_create_page') }}">
+        <form method="post" action="{{ url_for('contest.team_create_page', slug=contest.slug) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="mb-3">
             <label class="form-label" for="team-name">队伍名称</label>
@@ -53,7 +88,7 @@
       <div class="panel-head"><h2>凭邀请码入队</h2></div>
       <div class="panel-body">
         <p class="text-body-secondary">向队长索取 8 位邀请码（不区分大小写）。</p>
-        <form method="post" action="{{ url_for('auth.team_join_submit') }}">
+        <form method="post" action="{{ url_for('contest.team_join_submit', slug=contest.slug) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="mb-3">
             <label class="form-label" for="invite-code">邀请码</label>
@@ -67,4 +102,5 @@
     </section>
   </div>
 </div>
+{% endif %}{# /closed #}
 {% endblock %}

@@ -5,7 +5,7 @@
     <ul class="kv">
       <li><span class="k">配额重置</span><span class="v">每日 05:00（UTC+8）</span></li>
       <li><span class="k">距下次重置</span><span class="v mono" data-countdown aria-live="off">--</span></li>
-      <li><span class="k">每队每日提交</span><span class="v">99 次</span></li>
+      <li><span class="k">每人每日提交</span><span class="v">99 次</span></li>
       <li><span class="k">排名取值</span><span class="v">历史最优</span></li>
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
@@ -26,21 +26,51 @@
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
       每个数据点独立判定与计分，做错只丢该点的分。基准取全场该数据点的最优代价，因此会随他人成绩浮动。详见
-      <a href="{{ url_for('help_page') }}">帮助</a>。
+      <a href="{{ url_for('contest.help_page', slug=contest.slug) }}">帮助</a>。
     </p>
   </div>
 </div>
 
 <div class="panel">
-  <div class="panel-head"><h2>赛程</h2></div>
+  <div class="panel-head"><h2>本场次</h2></div>
   <div class="panel-body">
     <ul class="kv">
-      <li><span class="k">Stage 1</span><span class="v">线上 · 约 4 周</span></li>
-      <li><span class="k">Stage 2</span><span class="v">线下 · 3 小时</span></li>
-      <li><span class="k">晋级条件</span><span class="v">完成 Stage 1</span></li>
+      <li><span class="k">赛事</span><span class="v">{{ contest.title }}</span></li>
+      <li><span class="k">状态</span><span class="v">{{ contest.status_display }}</span></li>
     </ul>
     <p class="text-body-secondary small mb-0 mt-2">
-      完成 Stage 1 且有有效提交即可晋级；Stage 1 成绩不带入决赛。
+      {% if contest.accepts_submissions %}
+      本场次<strong>进行中</strong>，可提交评测。
+      {% else %}
+      本场次 {{ contest.status_display }}，<strong>暂不接受提交</strong>，榜单为只读。
+      {% endif %}
+      <a href="{{ url_for('contests_page') }}">查看全部场次 →</a>
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>赛程</h2><span class="text-body-secondary small">UTC+8</span></div>
+  <div class="panel-body">
+    <ul class="kv">
+      {% if contest.requires_registration %}
+      <li><span class="k">报名开始</span><span class="v mono">{{ fmt_time(contest.registration_start) }}</span></li>
+      <li><span class="k">报名截止</span><span class="v mono">
+        {{ fmt_time(contest.registration_end) }}
+        {% if not contest.registration_open %}<span class="vbadge vbadge-error ms-1">已截止</span>{% endif %}
+      </span></li>
+      {% endif %}
+      {% if contest.stages %}
+      {% for st in contest.stages %}
+      <li><span class="k">{{ st.label }}</span><span class="v mono">{{ fmt_time(st.start_at) }} ~ {{ fmt_time(st.end_at) }}</span></li>
+      {% endfor %}
+      {% else %}
+      <li><span class="k">比赛开始</span><span class="v mono">{{ fmt_time(contest.start_at) }}</span></li>
+      <li><span class="k">比赛结束</span><span class="v mono">{{ fmt_time(contest.end_at) }}</span></li>
+      {% endif %}
+    </ul>
+    <p class="text-body-secondary small mb-0 mt-2">
+      「—」表示时间待定。{% if contest.requires_registration %}本场次需<strong>先报名</strong>才能组队参赛。{% endif %}
     </p>
   </div>
 </div>

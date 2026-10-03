@@ -39,12 +39,26 @@
     <a class="btn btn-brand" href="{{ url_for('auth.login_page', next=request.path) }}">去登录</a>
   </div>
 </section>
+{% elif closed %}
+<section class="panel">
+  <div class="panel-head"><h2>本场次{{ contest.status_display }}</h2></div>
+  <div class="panel-body">
+    <div class="notice notice-info mb-0" role="status">
+      <div>
+        <strong>「{{ contest.title }}」当前{{ contest.status_display }}，暂不接受提交。</strong>
+        场次开放后可在此提交代码；现在可先浏览
+        <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题</a>与
+        <a href="{{ url_for('contest.standings_page', slug=contest.slug) }}">榜单</a>。
+      </div>
+    </div>
+  </div>
+</section>
 {% elif not team %}
 <section class="panel">
   <div class="panel-head"><h2>需要先组队</h2></div>
   <div class="panel-body">
     <p>本赛事按队伍计分，请先创建或加入一支队伍再提交。</p>
-    <a class="btn btn-brand" href="{{ url_for('auth.team_join_page') }}">去组队</a>
+    <a class="btn btn-brand" href="{{ url_for('contest.team_join_page', slug=contest.slug) }}">去组队</a>
   </div>
 </section>
 {% else %}
@@ -55,7 +69,7 @@
   <span class="seg" role="group" aria-label="切换赛题">
     {% for p in problems %}
     {% set ps = eval_spec(p.id) %}
-    <a href="{{ url_for('submit_page', problem=p.id) }}"
+    <a href="{{ url_for('contest.submit_page', slug=contest.slug, problem=p.id) }}"
        title="{{ p.title }} · {{ ps.case_count }} 个数据点 · 满分 {{ ps.full_score }}"
        {% if p.id == problem.id %}aria-current="true"{% endif %}>{{ p.title }}</a>
     {% endfor %}
@@ -78,7 +92,7 @@
     <span class="badge-id">{{ problem.id }}</span>
   </div>
   <div class="panel-body">
-    <form method="post" action="{{ url_for('submit_page') }}" enctype="multipart/form-data" novalidate>
+    <form method="post" action="{{ url_for('contest.submit_page', slug=contest.slug) }}" enctype="multipart/form-data" novalidate>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="problem" value="{{ problem.id }}">
 
@@ -116,7 +130,7 @@ cnn_entry:
         <button class="btn btn-brand" type="submit" id="submitBtn"
                 {% if wait_seconds %}disabled{% endif %}>提交评测</button>
         <span class="small">
-          以队伍「{{ team.name }}」提交 · 今日已用 {{ quota.used }}/{{ quota.limit }} 次
+          以队伍「{{ team.name }}」提交 · 你今日已提交 {{ quota.used }}/{{ quota.limit }} 次
         </span>
       </div>
     </form>
@@ -126,7 +140,7 @@ cnn_entry:
 <section class="panel">
   <div class="panel-head">
     <h2>我的最近提交</h2>
-    <a class="small" href="{{ url_for('auth.team_page') }}">查看全部 →</a>
+    <a class="small" href="{{ url_for('contest.team_page', slug=contest.slug) }}">查看全部 →</a>
   </div>
   {% if recent %}
   <div class="table-scroll">
@@ -145,7 +159,7 @@ cnn_entry:
       <tbody>
         {% for s in recent %}
         <tr>
-          <td class="mono"><a href="{{ url_for('result_page', submission_id=s.id) }}">#{{ s.id }}</a></td>
+          <td class="mono"><a href="{{ url_for('contest.result_page', slug=contest.slug, submission_id=s.id) }}">#{{ s.id }}</a></td>
           <td>{{ s.problem_id }}</td>
           <td>
             <span class="vbadge vbadge-{{ 'accepted' if s.status == 'success' else ('pending' if s.status in ('pending','running') else 'error') }}">{{ s.status_label }}</span>
@@ -153,7 +167,7 @@ cnn_entry:
           <td class="n">{{ '%.2f'|format(s.score or 0) }}</td>
           <td class="n">{{ s.cost if s.cost is not none else '—' }}</td>
           <td class="n text-body-secondary">{{ s.created_at.strftime('%m-%d %H:%M') }}</td>
-          <td><a class="small" href="{{ url_for('result_page', submission_id=s.id) }}">评测详情 →</a></td>
+          <td><a class="small" href="{{ url_for('contest.result_page', slug=contest.slug, submission_id=s.id) }}">评测详情 →</a></td>
         </tr>
         {% endfor %}
       </tbody>

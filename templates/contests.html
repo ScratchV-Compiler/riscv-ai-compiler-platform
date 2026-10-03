@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}全部场次 · 评测平台{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>全部场次</h1>
+  <p class="lede">
+    平台同时承载多场竞赛。每场有独立的赛题、榜单与队伍——同一道题在不同场次可以跑在不同数据上。
+  </p>
+</div>
+
+<section class="panel" aria-labelledby="listHeading">
+  <div class="panel-head">
+    <h2 id="listHeading">场次列表</h2>
+    <span class="text-body-secondary small">共 {{ contests|length }} 场</span>
+  </div>
+  <div class="table-scroll">
+    <table class="table table-standings align-middle">
+      <thead>
+        <tr>
+          <th scope="col">场次</th>
+          <th scope="col">状态</th>
+          <th scope="col">报名</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contests %}
+        <tr>
+          <td>
+            {% if c.is_enterable %}
+            <a href="{{ url_for('contest.index', slug=c.slug) }}">{{ c.title }}</a>
+            {% else %}
+            <span class="text-body-secondary">{{ c.title }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="vbadge {{ 'vbadge-accepted' if c.is_running else ('vbadge-pending' if c.status == 'upcoming' else 'vbadge-error') }}">
+              {{ c.status_display }}
+            </span>
+          </td>
+          <td>
+            {# 报名要求**始终可见**（未登录也要能看出这场要不要报名） #}
+            {% if c.status == 'ended' and c.requires_registration %}
+            <span class="text-body-secondary small">已结束 · 公开</span>
+            {% elif not c.requires_registration %}
+            <span class="text-body-secondary small">无需报名</span>
+            {% elif c.slug in enrolled_slugs %}
+            <span class="vbadge vbadge-accepted">已报名</span>
+            <form method="post" action="{{ url_for('contest.unenroll_page', slug=c.slug) }}" class="d-inline ms-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ url_for('contests_page') }}">
+              <button class="btn btn-quiet btn-sm" type="submit"
+                      onclick="return confirm('确定取消报名？')">取消</button>
+            </form>
+            {% else %}
+            <span class="vbadge vbadge-pending">需报名</span>
+            {% if not current_user %}
+            <a class="btn btn-quiet btn-sm ms-1" href="{{ url_for('auth.login_page', next=url_for('contests_page')) }}">登录后报名</a>
+            {% elif c.registration_open %}
+            <form method="post" action="{{ url_for('contest.enroll_page', slug=c.slug) }}"
+                  class="d-flex gap-1 mt-1" style="max-width: 15rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ url_for('contests_page') }}">
+              <input type="text" name="code" class="form-control form-control-sm"
+                     placeholder="报名邀请码" required autocomplete="off">
+              <button class="btn btn-brand btn-sm" type="submit">报名</button>
+            </form>
+            {% else %}
+            <span class="text-body-secondary small ms-1">已截止</span>
+            {% endif %}
+            {% endif %}
+          </td>
+          <td>
+            {% if c.is_enterable %}
+            <a class="btn btn-quiet btn-sm" href="{{ url_for('contest.standings_page', slug=c.slug) }}">榜单</a>
+            <a class="btn btn-brand btn-sm" href="{{ url_for('contest.index', slug=c.slug) }}">进入</a>
+            {% else %}
+            <span class="vbadge vbadge-pending">{{ c.status_display }}</span>
+            <span class="text-body-secondary small ms-2">未开放，暂不能进入</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot text-body-secondary small">
+    标 <span class="vbadge vbadge-pending">需报名</span> 的场次要先<strong>个人报名</strong>才能查看内容与参赛；
+    未开始的场次<strong>开赛前也能报名</strong>，但赛题与榜单要开赛后可见；
+    <strong>已结束</strong>的场次对所有人<strong>公开回看</strong>。<br>
+    场次由服务端配置注册（<span class="mono">contests.py</span>）。新增一场 = 加一条配置并重启。
+  </div>
+</section>
+{% endblock %}

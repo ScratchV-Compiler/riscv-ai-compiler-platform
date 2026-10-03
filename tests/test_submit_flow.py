@@ -49,16 +49,16 @@ def upload(name, content):
 
 with app.test_client() as c:
     # --- 登录前访问 /submit 应跳登录 ---
-    r = c.get('/submit')
+    r = c.get('/c/riscv-ai/submit')
     check('/submit 未登录 → 302 到 /login', r.status_code == 302 and '/login' in r.headers.get('Location',''), r.status_code)
 
     # --- 注册 + 建队 ---
     c.post('/api/auth/register', json={'email':'a@stu.ecnu.edu.cn','name':'甲','password':'pass12345'})
-    r = c.post('/api/team', json={'name': '矩阵小队'})
+    r = c.post('/c/riscv-ai/api/team', json={'name': '矩阵小队'})
     check('建队 201', r.status_code == 201, r.status_code)
 
     # --- 提交页 ---
-    r = c.get('/submit')
+    r = c.get('/c/riscv-ai/submit')
     body = r.get_data(as_text=True)
     check('/submit 200 且默认落到首个可提交题', r.status_code == 200 and '逐元素相加' in body, r.status_code)
     check('提交页含 cnn_entry 约定', 'cnn_entry' in body)
@@ -67,38 +67,38 @@ with app.test_client() as c:
     clear_throttle()
     c2 = app.test_client()
     c2.post('/api/auth/register', json={'email':'b@stu.ecnu.edu.cn','name':'乙','password':'pass12345'})
-    r = c2.post('/submit', data={'problem':'matmul','code': upload('k.s', REF)},
+    r = c2.post('/c/riscv-ai/submit', data={'problem':'matmul','code': upload('k.s', REF)},
                 content_type='multipart/form-data')
     check('未入队提交被拒（回提交页）', r.status_code == 302, r.status_code)
 
     clear_throttle()
     # --- 正常提交 ---
-    r = c.post('/submit', data={'problem':'matmul','code': upload('matmul.s', REF)},
+    r = c.post('/c/riscv-ai/submit', data={'problem':'matmul','code': upload('matmul.s', REF)},
                content_type='multipart/form-data')
     check('提交成功 → 302 到结果页', r.status_code == 302 and '/result/' in r.headers.get('Location',''),
           r.headers.get('Location'))
     sub_id = int(r.headers['Location'].rstrip('/').split('/')[-1])
 
     # --- 后缀不对应被拒 ---
-    r = c.post('/api/submit', data={'problem':'matmul','code': upload('x.py', b'print(1)')},
+    r = c.post('/c/riscv-ai/api/submit', data={'problem':'matmul','code': upload('x.py', b'print(1)')},
                content_type='multipart/form-data')
     check('错误后缀被拒 400', r.status_code == 400, r.get_json())
 
     # --- 已下线的题目应被拒 ---
-    r = c.post('/api/submit', data={'problem':'add-two-numbers','code': upload('x.s', REF)},
+    r = c.post('/c/riscv-ai/api/submit', data={'problem':'add-two-numbers','code': upload('x.s', REF)},
                content_type='multipart/form-data')
     check('已下线题目提交被拒 400', r.status_code == 400, r.get_json())
 
     clear_throttle()
     # --- 粘贴代码提交 ---
-    r = c.post('/submit', data={'problem':'matmul','source': REF.decode()},
+    r = c.post('/c/riscv-ai/submit', data={'problem':'matmul','source': REF.decode()},
                content_type='multipart/form-data')
     check('粘贴代码提交成功 → 302 结果页', r.status_code == 302 and '/result/' in r.headers.get('Location',''),
           r.status_code)
     pid = r.headers.get('Location','').rstrip('/').split('/')[-1]
     d = None
     for _ in range(60):
-        d = c.get(f'/api/result/{pid}').get_json()
+        d = c.get(f'/c/riscv-ai/api/result/{pid}').get_json()
         if d['status'] in ('success','failed'): break
         time.sleep(1)
     det2 = json.loads(d['details'])
@@ -106,20 +106,20 @@ with app.test_client() as c:
           f"{d['status']} {det2.get('verdict')} {det2.get('score')}")
 
     # --- 空粘贴 + 无文件 → 拒绝 ---
-    r = c.post('/api/submit', data={'problem':'matmul','source':'   \n  '},
+    r = c.post('/c/riscv-ai/api/submit', data={'problem':'matmul','source':'   \n  '},
                content_type='multipart/form-data')
     check('空白粘贴被拒 400', r.status_code == 400, r.get_json())
 
     clear_throttle()
     # --- 同时提供文件与粘贴 → 以文件为准（文件是坏的，若粘贴生效就会通过）---
-    r = c.post('/api/submit', data={'problem':'matmul','source': REF.decode(),
+    r = c.post('/c/riscv-ai/api/submit', data={'problem':'matmul','source': REF.decode(),
                                     'code': upload('bad.s', b'.text\n.globl cnn_entry\ncnn_entry:\n  bogus x0,x0,x0\n')},
                content_type='multipart/form-data')
     check('API 提交 201', r.status_code == 201, r.get_json())
     pid3 = r.get_json()['submission_id']
     d3 = None
     for _ in range(60):
-        d3 = c.get(f'/api/result/{pid3}').get_json()
+        d3 = c.get(f'/c/riscv-ai/api/result/{pid3}').get_json()
         if d3['status'] in ('success','failed'): break
         time.sleep(1)
     det3 = json.loads(d3['details'])
@@ -127,7 +127,7 @@ with app.test_client() as c:
           det3.get('verdict'))
 
     # --- 空文件被拒 ---
-    r = c.post('/api/submit', data={'problem':'matmul','code': upload('e.s', b'')},
+    r = c.post('/c/riscv-ai/api/submit', data={'problem':'matmul','code': upload('e.s', b'')},
                content_type='multipart/form-data')
     check('空文件被拒 400', r.status_code == 400, r.get_json())
 
@@ -135,7 +135,7 @@ with app.test_client() as c:
     deadline = time.time() + 90
     data = None
     while time.time() < deadline:
-        data = c.get(f'/api/result/{sub_id}').get_json()
+        data = c.get(f'/c/riscv-ai/api/result/{sub_id}').get_json()
         if data['status'] in ('success', 'failed'):
             break
         time.sleep(1)
@@ -146,7 +146,7 @@ with app.test_client() as c:
           f"verdict={det['verdict']} score={det['score']}")
 
     # --- 结果页渲染 ---
-    r = c.get(f'/result/{sub_id}')
+    r = c.get(f'/c/riscv-ai/result/{sub_id}')
     body = r.get_data(as_text=True)
     check('结果页 200', r.status_code == 200, r.status_code)
     # 结果页显示的是**动态基准**下的实时得分，会低于评测时的快照分
@@ -155,7 +155,7 @@ with app.test_client() as c:
     check('结果页不再出现占位字段 cycles', 'cycles' not in body)
 
     # --- 排行榜应把它算进去 ---
-    r = c.get('/standings')
+    r = c.get('/c/riscv-ai/standings')
     check('排行榜 200', r.status_code == 200, r.status_code)
 
 boot.finish('提交流程端到端')
