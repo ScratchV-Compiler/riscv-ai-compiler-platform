@@ -90,7 +90,7 @@ DEMO_BANNER = (
 DEMO_NOTICE = """<!DOCTYPE html>
 <html lang="zh-CN" data-bs-theme="light"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>演示版说明 · RISC-V AI 编译器挑战赛</title>
+<title>演示版说明 · RISC-V AI 编译器比赛平台</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="static/style.css"></head>
 <body>%s
