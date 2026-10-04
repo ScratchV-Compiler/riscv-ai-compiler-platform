@@ -32,7 +32,7 @@ def mail_configured():
 def send_password_reset_email(to_email, reset_url):
     """发送找回密码邮件；未配置 SMTP 时打印到日志。"""
     ttl_min = current_app.config['RESET_TOKEN_TTL_SECONDS'] // 60
-    subject = '【RISC-V AI 编译器挑战赛】重置密码'
+    subject = '【RISC-V AI 编译器比赛平台】重置密码'
     body = (
         f'你好，\n\n'
         f'我们收到了重置此邮箱账号密码的请求。请在 {ttl_min} 分钟内打开下面的链接设置新密码：\n\n'

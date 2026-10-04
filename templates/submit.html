@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}提交 · RISC-V AI 编译器挑战赛{% endblock %}
+{% block title %}提交 · RISC-V AI 编译器比赛平台{% endblock %}
 
 {% block head %}
 <style>
@@ -184,7 +184,7 @@ cnn_entry:
     <dl class="spec">
       <dt>入口符号</dt>
       <dd>必须定义全局符号 <span class="mono">{{ entry_symbol }}</span>，入参
-        a0 = 输入首址、a1 = 输出首址、<strong>a2 = 规模 N</strong>
+        a0 = 输入首址、a1 = 输出首址、<strong>a2 = 规模标量</strong>
         （{{ spec.param_meaning }}）。<strong>必须写尺寸无关的代码</strong>——
         10 个数据点的规模各不相同。</dd>
       <dt>内存布局</dt>
@@ -192,12 +192,13 @@ cnn_entry:
         工作区与输出区的大小随 <span class="mono">a2</span> 变化。
         任一保护区被写坏即判越界失败。</dd>
       <dt>越界与规模</dt>
-      <dd>输出区大小 = {{ spec.note }}。规模越大，工作区与输出区越大——
-        按 <span class="mono">a2</span> 算，不要写死常量。</dd>
+      <dd>{{ spec.note }}。输出区与工作区的大小随规模与形状而变——
+        按 <span class="mono">a2</span>（自描述题另读输入头）算，不要写死常量。</dd>
       <dt>栈指针</dt>
       <dd>调用前 sp 已指向工作区顶端，栈可向下正常使用。</dd>
       <dt>指令集</dt>
-      <dd>固定 <span class="mono">-march=rv32im</span>（无压缩扩展、无浮点/原子指令），
+      <dd>固定 <span class="mono">-march={{ spec.march|default('rv32im') }}</span>
+        （{{ '单精度浮点 F 扩展' if spec.dtype == 'float32' else '无压缩扩展、无浮点/原子指令' }}），
         关闭链接松弛。</dd>
       <dt>评测指标</dt>
       <dd><span class="mono">代价 = 动态指令数 + {{ config.MISS_PENALTY }} × L1 未命中次数</span>。

@@ -12,7 +12,9 @@
 **qemu-riscv32** 真实执行，读出内存 dump，与平台独立算出的参考值比对；
 正确性全过之后，用**动态指令数**相对基准计分。
 
-目前开放三道题（均为 RV32IM 汇编 + qemu 真实执行）：
+题册里现有六道题，按场次组成两张试卷（均为汇编 + qemu 真实执行）：
+
+**内测比赛1（`riscv-ai`）**：
 
 | 题目 | 算子 | 规模梯度 | 每点分值 | 满分 |
 |---|---|---|---|---|
@@ -20,7 +22,15 @@
 | `matmul` | N×N 定点矩阵乘 | N = 4 → 64（立方） | 3 | 30 |
 | `reducesum` | 全归约求和 | N = 64 → 4096（线性） | 4 | 40 |
 
-三题合计 **100 分**。
+**内测比赛2（`demo`）**（源《2026 华东师大 AI 编译竞赛》三道赛题，规模已等比缩小）：
+
+| 题目 | 算子 | 数据点 | 每点分值 | 满分 | 数值 |
+|---|---|---|---|---|---|
+| `fwht` | 快速哈达玛变换（蝶形） | N = 8 → 4096 | 3 | 30 | float32 |
+| `winograd` | 2D 卷积（baseline=直接卷积） | 10 组缩小的 batch/通道/核 | 3 | 30 | float32 |
+| `spmm` | CSR 稀疏矩阵乘 | 10 组缩小的 M/K/N/稀疏度 | 4 | 40 | float32 |
+
+内测比赛2 三题**均为 FP32**（`-march=rv32imf`）；每张试卷各 **100 分**。
 
 **数据点按规模分级**（对齐官方 `stage2数据点.md` 的取法）：每题 10 个数据点，
 每个点是**不同的规模 N**，从小到大覆盖"小规模基本正确性 → 中等规模 → 超出 L1 的
@@ -43,12 +53,17 @@
 | 项 | 约定 |
 |---|---|
 | 入口符号 | 必须定义**全局符号 `cnn_entry`** |
-| 入参 | `a0` = 输入张量首址，`a1` = 输出张量首址，**`a2` = 规模 N** |
-| 规模含义 | matmul 为矩阵阶数；add / reducesum 为向量长度 |
+| 入参 | `a0` = 输入张量首址，`a1` = 输出张量首址，**`a2` = 规模标量** |
+| 规模含义 | matmul 为矩阵阶数；add / reducesum / fwht 为向量长度；`winograd`/`spmm` 为规模标量（完整形状见输入头） |
 | 返回 | 普通 `ret` 即可；wrapper 负责 dump |
-| 数值格式 | int32 **Q16.16** 定点 |
-| 输入范围 | `[-32768, 32767]`，即 Q16.16 的 [-0.5, 0.5) |
+| 数值格式 | int32 **Q16.16** 定点（内测比赛1，`dtype='int32'`）；**float32**（内测比赛2 三题） |
+| 输入范围 | int32：`[-32768, 32767]`（Q16.16 [-0.5, 0.5)）；float32：`[-1, 1]` |
+| 指令集 | 按题 `march`：内测比赛1 `rv32im`，内测比赛2 `rv32imf`（`mabi` 恒 `ilp32`） |
 | 栈 | `sp` 已指向工作区顶端，可向下正常使用 |
+
+> **自描述输入**：`winograd`/`spmm` 的形状不止一个标量，输入张量带一个 **int32 头部**
+> （即使题是 float32，头部也恒为 int32），选手从 `a0` 读头取形状，`a2` 只给规模标量。
+> 头部与完整形状见 `riscv_oracle`/`riscv_problems` 的 `params_by_size`。
 
 **内存布局**（`riscv_problems.layout(spec, N)`，一次连续 dump）：
 
@@ -62,10 +77,10 @@ guard_lo(256) | workspace(max(1024, 8N)) | guard_mid(256) | output(依 N) | guar
 > （指向工作区**底部**），栈向下会写进 guard_lo，等于隐式禁止选手用栈；
 > 本平台把 `sp` 钉在工作区**顶端**，选手可正常用栈，而栈溢出仍被 guard_lo 捕获。
 
-**编译命令**（锁死，见第四节）：
+**编译命令**（锁死，见第四节；`-march` 按题取 `spec['march']`，默认 `rv32im`）：
 
 ```
-clang --target=riscv32-linux-gnu -march=rv32im -mabi=ilp32 \
+clang --target=riscv32-linux-gnu -march=<rv32im|rv32imf> -mabi=ilp32 \
       -nostdlib -static -fuse-ld=lld -Wl,--no-relax wrapper.s player.s -o execute.elf
 ```
 
@@ -80,6 +95,11 @@ clang --target=riscv32-linux-gnu -march=rv32im -mabi=ilp32 \
 
 `C[i][j] = Σₖ s32( s32(A[i][k] × B[k][j]) >> 16 )`，逐步取模 2^32，
 与真实指令序列（`mul` + `srai` + `add`）逐步对齐，而不是先算大整数再截断。
+
+**整数题精确比对**（内测比赛1，`tolerance=0`）；**浮点题（内测比赛2 三题）按容差**
+`|got-expected| <= atol + rtol*|expected|`（见 `riscv_oracle.check_output`，
+`rtol=1e-4`；`fwht` 因全抵消时相对误差失去意义，`atol` 放宽到 1e-3），
+以吸收换序求和（Winograd 变换、分块蝶形、稠密 GEMM 回退）带来的单精度舍入差。
 
 ### 3.2 逐点独立计分
 

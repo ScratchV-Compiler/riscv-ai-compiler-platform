@@ -114,6 +114,16 @@ with app.app_context():
     check('失败信息仍指明出错位置（便于选手自查）',
           '第' in detail and '个' in detail, detail)
 
+    # ---- 2c. 浮点题（内测比赛2 的 winograd）：全 0 判 invalid，且同样不回显数值 ----
+    _, d = run_evaluation(5, 'team-a', 'winograd', write_src('zeros_f.s', SRC_ZEROS),
+                          contest='demo')
+    check('浮点题输出全 0 → invalid', d['verdict'] == 'invalid',
+          f"verdict={d['verdict']} msg={d['message'][:60]}")
+    bad = [c for c in d['cases'] if c['verdict'] != 'accepted']
+    detail = bad[0]['detail'] if bad else ''
+    check('浮点失败信息同样只报位置、不回显数值',
+          not re.search(r'期望\s*-?\d', detail) and '第' in detail, detail)
+
     # ---- 3. 非 RISC-V 题（LeetCode 三道）应判 unsupported ----
     _, d = run_evaluation(3, 'team-a', 'add-two-numbers', os.path.join(ROOT, 'reference/matmul.s'))
     check('LeetCode 题 → unsupported', d['verdict'] == 'unsupported', d['message'])

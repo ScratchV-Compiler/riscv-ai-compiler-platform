@@ -1,6 +1,6 @@
 # riscv-ai-compiler-platform
 
-「RISC-V AI 编译器挑战赛」的**线上评测平台**（Flask + SQLite 的轻量 OJ 原型）。
+「RISC-V AI 编译器比赛平台」（Flask + SQLite 的轻量 OJ 原型）。
 
 姊妹仓 [`ai_compiler_challange`](../ai_compiler_challange) 是赛事的**策划与赛题仓库**（总策划案、赛题、baseline 验证）；本仓是其中"评测系统"一节的**最小可运行落地**。
 
