@@ -222,16 +222,17 @@ _CONTESTS = [
         # 不覆盖任何东西：沿用 riscv_problems.EVAL_SPECS 与 data/baseline.json，
         # 行为与引入多场次之前**逐字节等价**。
     ),
-    # ---- 占位场次：演示「多场次 + 同题复用不同数据」这套机制 ----
-    # 复用前三道题，但 baseline 换到本场自己的文件（data/contests/demo/baseline.json，
-    # 需用 `tools/gen_baseline.py --contest demo` 生成）、并演示局部覆盖。
-    # 状态为「未开始」——页面可看，但不能提交（生命周期闸门）。
+    # ---- 内测比赛2：独立的试卷（源《2026 华东师大 AI 编译竞赛》三道赛题）----
+    # 与内测比赛1 共用「题册里挑题」机制，但换成本场自己的三道题：
+    #   fwht（哈达玛变换）/ winograd（卷积，FP32）/ spmm（稀疏矩阵乘）。
+    # baseline 放在本场自己的文件（data/contests/demo/baseline.json，
+    # 需用 `tools/gen_baseline.py --contest demo` 生成）。
     Contest(
         slug='demo',
         title='内测比赛2',
         short_title='内测比赛2',
         status=RUNNING,
-        requires_registration=True,   # 演示「需报名」：未报名不能看内容/组队
+        requires_registration=True,   # 需报名：未报名不能看内容/组队
         registration_code='demo',     # 报名邀请码
         # 赛程与主赛事相同：10.01–10.31（S1）、10.31–11.30（S2）
         start_at=beijing(2026, 10, 1, 8, 0),
@@ -240,10 +241,8 @@ _CONTESTS = [
             Stage('Stage 1', beijing(2026, 10, 1, 8, 0), beijing(2026, 10, 31, 8, 0)),
             Stage('Stage 2', beijing(2026, 10, 31, 8, 0), beijing(2026, 11, 30, 8, 0)),
         ),
-        problem_ids=('add', 'matmul', 'reducesum'),
+        problem_ids=('fwht', 'winograd', 'spmm'),
         baseline_file='data/contests/demo/baseline.json',
-        # 局部覆盖：本场把归约求和每点分值调成 5（仅为演示覆盖语义，非真实数据）
-        eval_overrides={'reducesum': {'points_per_case': 5}},
     ),
 ]
 

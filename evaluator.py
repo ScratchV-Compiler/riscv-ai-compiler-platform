@@ -129,7 +129,8 @@ def _evaluate_riscv_asm(spec, problem_id, code_path):
                 spec, values, n, os.path.join(work, f'wrapper_{idx}.s'))
             elf = os.path.join(work, f'execute_{idx}.elf')
 
-            ok, cerr = riscv_runner.compile_elf(wrapper, player, elf, cfg, work)
+            ok, cerr = riscv_runner.compile_elf(wrapper, player, elf, cfg, work,
+                                                march=spec.get('march', 'rv32im'))
             if not ok:
                 # 编译失败与输入无关 → 整题失败，后续数据点必然同样失败
                 case.update(verdict='compile_error', detail=cerr)

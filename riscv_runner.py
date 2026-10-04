@@ -184,7 +184,13 @@ def build_wrapper(spec, values, n, path):
     guard = lay['guard_lo'][1]        # 保护区大小由 layout 决定，规格里不再重复存
     ws = lay['workspace'][1]
     out_bytes = lay['output'][1]
-    words = ', '.join(str(int(v)) for v in values)
+    # **按值的类型**发射：float 用 IEEE-754 单精度位型（直接 str(int(v)) 会把 3.14
+    # 变成 3，等于把全部小数丢掉）；int 用十进制。逐值判断——自描述题的头部是
+    # int32、载荷是 float，不能整段按 dtype 一刀切（否则头部会被当成浮点位数）。
+    words = ', '.join(
+        ('0x%08x' % struct.unpack('<I', struct.pack('<f', v))[0])
+        if isinstance(v, float) else str(int(v))
+        for v in values)
 
     asm = f'''# 由平台生成，勿手改。对应 riscv_problems.layout(spec, N={n})：
 #   guard_lo({guard}) | workspace({ws}) | guard_mid({guard}) | output({out_bytes}) | guard_hi({guard})
@@ -240,15 +246,16 @@ output_tensor:
 # 编译 / 运行 / 计数 / 解析
 # ---------------------------------------------------------------------------
 
-def compile_elf(wrapper_path, player_path, out_path, cfg, cwd):
+def compile_elf(wrapper_path, player_path, out_path, cfg, cwd, march='rv32im'):
     """汇编+链接选手提交与 wrapper。返回 (ok, stderr_tail)。
 
-    锁死 `-march=rv32im`（不加 c 压缩扩展）与 `--no-relax`：否则指令数随工具链抖动，
-    跨队不可比、历史成绩失效。
+    锁死 `-march`（默认 rv32im；浮点题为 rv32imf）与 `--no-relax`：否则指令数随
+    工具链抖动，跨队不可比、历史成绩失效。`mabi` 恒为 ilp32（入口只传指针，
+    软浮点 ABI 下 rv32imf 的浮点运算仍走硬件 F 指令）。
     """
     # 子进程 cwd 会切到工作目录，这里统一转绝对路径
     cmd = [
-        'clang', '--target=riscv32-linux-gnu', '-march=rv32im', '-mabi=ilp32',
+        'clang', '--target=riscv32-linux-gnu', f'-march={march}', '-mabi=ilp32',
         '-nostdlib', '-static', '-fuse-ld=lld', '-Wl,--no-relax',
         os.path.abspath(wrapper_path), os.path.abspath(player_path),
         '-o', os.path.abspath(out_path),
@@ -391,7 +398,10 @@ def parse_dump(data, spec, n):
             return None, False, f'越界写：{label}的保护区被破坏'
 
     off, size = lay['output']
-    values = list(struct.unpack(f'<{size // 4}i', data[off:off + size]))
+    if spec.get('dtype') == 'float32':
+        values = list(struct.unpack(f'<{size // 4}f', data[off:off + size]))
+    else:
+        values = list(struct.unpack(f'<{size // 4}i', data[off:off + size]))
     return values, True, ''
 
 

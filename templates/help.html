@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}帮助 · RISC-V AI 编译器挑战赛{% endblock %}
+{% block title %}帮助 · RISC-V AI 编译器比赛平台{% endblock %}
 
 {% block content %}
 <div class="page-head">
@@ -79,20 +79,25 @@
       <dd>定义全局符号 <span class="mono">cnn_entry</span>；入参
         <span class="mono">a0</span> = 输入首址、
         <span class="mono">a1</span> = 输出首址、
-        <strong><span class="mono">a2</span> = 规模 N</strong>
-        （matmul 是矩阵阶数，add / reducesum 是向量长度）。</dd>
+        <strong><span class="mono">a2</span> = 规模标量</strong>
+        （add / reducesum / fwht 是向量长度，matmul 是矩阵阶数；
+        winograd / spmm 的完整形状写在输入张量头部，a2 只给规模标量）。</dd>
       <dt>数据格式</dt>
-      <dd>int32、<strong>Q16.16 定点</strong>，取值落在 [-32768, 32767]（即 [-0.5, 0.5)），
-        单次乘法/相加不会溢出 int32。</dd>
+      <dd>内测比赛1（add / matmul / reducesum）：int32、<strong>Q16.16 定点</strong>，
+        取值落在 [-32768, 32767]（即 [-0.5, 0.5)）。
+        内测比赛2（fwht / winograd / spmm）：<strong>FP32 浮点</strong>（取值 [-1, 1]），
+        按相对/绝对容差（rtol / atol）判定。</dd>
       <dt>内存布局</dt>
       <dd>保护区(256B) | 工作区 | 保护区(256B) | 输出区 | 保护区(256B)。
-        <strong>工作区与输出区的大小随 N 变化</strong>，按 <span class="mono">a2</span> 算，
-        不要写死常量。任一保护区被写坏即判越界失败。</dd>
+        <strong>工作区与输出区的大小随规模与形状变化</strong>，按
+        <span class="mono">a2</span>（自描述题另读输入头）算，不要写死常量。
+        任一保护区被写坏即判越界失败。</dd>
       <dt>栈</dt>
       <dd>调用前 <span class="mono">sp</span> 已指向工作区顶端，可向下正常使用。</dd>
       <dt>指令集</dt>
-      <dd>固定 <span class="mono">-march=rv32im</span>——<strong>无压缩扩展</strong>
-        （<span class="mono">c.*</span>）、无浮点、无原子指令，关闭链接松弛。</dd>
+      <dd>内测比赛1 固定 <span class="mono">-march=rv32im</span>；内测比赛2 三题为
+        <span class="mono">-march=rv32imf</span>（单精度 F 扩展）。
+        均<strong>无压缩扩展</strong>（<span class="mono">c.*</span>）、无原子指令，关闭链接松弛。</dd>
     </dl>
   </div>
 </section>
@@ -107,6 +112,8 @@
         <ul>
           <li><span class="mono">add</span> / <span class="mono">reducesum</span>：N = 64, 128, …, 4096</li>
           <li><span class="mono">matmul</span>：4×4, 8×8, …, 64×64</li>
+          <li><span class="mono">fwht</span>：N = 8, 16, …, 4096</li>
+          <li><span class="mono">winograd</span> / <span class="mono">spmm</span>：缩小的 10 组形状</li>
         </ul>
         <p>由小到大覆盖「基本正确性 → 循环开销 → 访存瓶颈」。完整表格见
           <a href="{{ url_for('contest.problems_page', slug=contest.slug) }}">赛题页</a>。</p>
@@ -121,9 +128,8 @@
             未命中按顺序核的实际代价折算：L1 命中 2 拍、未命中约 15~20 拍且互不重叠
             （该核只有一个填充槽），结合实测 IPC≈0.75，取 α = 15。</dd>
           <dt>数据点与分值</dt>
-          <dd>每题 10 个数据点，每个独立判定、独立给分。
-            <span class="mono">add</span> 与 <span class="mono">matmul</span> 每点 3 分（各 30 分），
-            <span class="mono">reducesum</span> 每点 4 分（40 分），三题合计 <strong>100 分</strong>。</dd>
+          <dd>每题 10 个数据点，每个独立判定、独立给分；每题每点的分值见本场赛题页的表格，
+            本场三题合计 <strong>100 分</strong>。</dd>
           <dt>单点得分</dt>
           <dd>做对的点得分 = 分值 × min(1, <strong>该点全场最优代价</strong> ÷ 本队该点代价)。
             基准取<strong>全场最优</strong>（对齐官方策划案「以最优成绩为基准」），
@@ -177,8 +183,10 @@
         检查是否写到了 <span class="mono">a1 + 输出元素数×4</span> 之外；
         也要注意栈向下溢出工作区。</dd>
       <dt>运行错误（段错误 / 非法指令）</dt>
-      <dd>多半是非法访存，或用了 RV32IM 不支持的指令（如压缩指令 <span class="mono">c.*</span>、
-        浮点 / 原子指令）。本项目固定 <span class="mono">-march=rv32im</span>。</dd>
+      <dd>多半是非法访存，或用了当前题 <span class="mono">-march</span> 不支持的指令
+        （如压缩指令 <span class="mono">c.*</span>；整数题里的浮点 / 原子指令）。
+        内测比赛1 固定 <span class="mono">rv32im</span>，内测比赛2 为
+        <span class="mono">rv32imf</span>。</dd>
       <dt>超时</dt>
       <dd>存在死循环，或代价远超基准。先把循环边界检查清楚——
         尤其注意规模变大后，循环次数是按 N 增长的。</dd>

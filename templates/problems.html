@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% block title %}赛题 · RISC-V AI 编译器挑战赛{% endblock %}
+{% block title %}赛题 · RISC-V AI 编译器比赛平台{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <h1>赛题</h1>
   <p class="lede">
-    提交 RV32IM 汇编（可由编译器生成），平台在 qemu 上真实执行。
-    每题 10 个数据点逐点独立计分，三题分别 30 / 30 / 40 分，合计 100。
+    提交 RISC-V 汇编（可由编译器生成），平台在 qemu 上真实执行。
+    每题 10 个数据点逐点独立计分，本场三题合计 100 分。
   </p>
 </div>
 
@@ -19,12 +19,12 @@
   <div class="panel-body">
     <dl class="spec">
       <dt>数据点与分值</dt>
-      <dd>每题 <strong>10 个数据点</strong>，每个数据点独立判定、独立给分：
-        <span class="mono">add</span> 与 <span class="mono">matmul</span> 每点 3 分（各 30 分），
-        <span class="mono">reducesum</span> 每点 4 分（40 分），三题合计 <strong>100 分</strong>。</dd>
+      <dd>每题 <strong>10 个数据点</strong>，每个数据点独立判定、独立给分；每题每点的分值见
+        上方各题表格，本场三题合计 <strong>100 分</strong>。</dd>
       <dt>正确性</dt>
       <dd>平台在 qemu-riscv32 上真实执行你的汇编，把该数据点的输出与官方参考实现比对，
-        结果须完全一致。<strong>做错只丢该数据点的分</strong>，不影响其余数据点。</dd>
+        整数题须完全一致、浮点题按容差（rtol/atol）。
+        <strong>做错只丢该数据点的分</strong>，不影响其余数据点。</dd>
       <dt>评测指标</dt>
       <dd><span class="mono">代价 = 动态指令数 + 15 × L1 未命中次数</span>。
         未命中按顺序核的实际代价折算：L1 命中 2 拍、未命中约 15~20 拍且互不重叠
@@ -40,7 +40,8 @@
       <dt>成绩取用</dt>
       <dd>同一队伍同一题取历史最高分（跨日累计）；提交配额每日 05:00（UTC+8）重置。</dd>
       <dt>评测环境</dt>
-      <dd>固定工具链（clang + qemu-riscv32，<span class="mono">-march=rv32im</span>，关闭指令压缩与链接松弛），
+      <dd>固定工具链（clang + qemu-riscv32），<span class="mono">-march=rv32im</span>
+        （浮点题 <span class="mono">-march=rv32imf</span>），关闭指令压缩与链接松弛；
         代价在相同条件下测量，跨队可比。</dd>
       <dt>防作弊</dt>
       <dd>每次评测的输入由平台随机生成，参考输出在平台侧独立计算，<strong>预先写死答案无法通过</strong>。
